@@ -9,7 +9,7 @@
  */
 
 int getIndex(int i, int j, int width, int height){
-    return i + (j-1) * height;
+    return i-1 + (j-1) * height;
 }    
 
 typedef struct {
