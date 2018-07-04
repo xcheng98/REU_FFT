@@ -1,7 +1,7 @@
 % test fft2d_part
 
-A = 64*2;
-B = 64*2;
+A = 64;
+B = 64;
 N = A*B;
 X = rand(N,N) + sqrt(-1)*rand(N,N);
 
