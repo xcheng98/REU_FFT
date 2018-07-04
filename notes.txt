@@ -1,0 +1,68 @@
+Let notation e( a )  to mean   exp( 2*pi*i * a )
+e(X+Y) = e(X)*e(Y)
+
+Fourer transform of length N
+
+Xhat( ahat ) = sum(  e( ahat * a/ N ) * X(ahat), over a )
+
+Following derivation in paper "FFT for Fun and Profit" bty Gentleman
+
+Let N = A * B,   
+
+Xhat( ahat + bhat*A ) = sum(  e( (ahat + bhat*A)*(b + a*B)/(A*B) ) * 
+                              X(b + a*B), over a,b )
+
+We now assume  bhat = 0, to get only the top "A" coefficients.
+For example, N = 4096 = 64 * 64 = A * B, want only 64 coefficients
+
+Xhat( ahat ) = sum( e(  (ahat) * (b + a*B)/(A*B) ) * X(b + a*B), over a,b )
+= sum( e( ahat*b/(A*B) ) * e( ahat*a*B/(A*B) ) * X(b + a*B), over a,b)
+= sum( e( ahat*b/(A*B) ) * sum( e(ahat*a)/A) * X(b + a*B), over a), over b )
+
+Let W(a,b) = X(b + a*B)
+
+= sum( e(ahat*b/(A*B) ) * sum( e(ahat*a)/A * W(a,b) , over a ), over b )
+
+Let What(ahat,b) = sum( e(ahat*a/A)*W(a,b),a), which is Fourier Transform of W(a,b)
+
+Xhat(ahat) = sum( e( ahat*b/(A*B) ) * What(ahat,b) )
+
+This suggests doing B number of A-length FFT on W(a,b) = X(b + a*B), data reshaped to be B by A matrix, access data across row
+
+For each value of ahat,
+Xhat(ahat) = sum( e( ahat*b/(A*B) ) * What(ahat,b) , over b), takes B operations
+
+= sum(  e(b/(A*B))^ahat  * What(ahat,b), over b )
+
+b = 0:(B-1);
+eb = e( b/(A*B) );
+
+ebpow = ones(size(eb));
+for ahat = 0:(A-1),
+    Xhat(ahat) = sum( ebpow .* What(ahat, :) );
+    ebpow = ebpow .* eb;
+end;
+
+
+-------
+In 2D,  
+Xhat = F * X * transpose(F) = F*X*Ft,   
+
+where Ft = transpose(F), note not conjugate transpose
+
+FX(1,1) = F(1,1)*X(1,1) + F(1,2)*X(2,1)
+FX(1,2) = F(1,1)*X(1,2) + F(1,2)*X(2,2)
+
+Let Y be the block row of FX
+Y(1) = FX(1,1); Y(2) = FX(1,2);
+
+Xhat(1,1) = FX(1,1)*Ft(1,1) + FX(1,2)*Ft(2,1)
+          = FX(1,1)*trans(F(1,1)) + FX(1,2)*trans( F(1,2) )
+          = Y(1) * trans(F(1,1)) + Y(2)*trans(F(1,2))
+          = trans(  F(1,1)* Yt(1) + F(1,2)*Yt(2) )
+
+where Yt = transpose(Y)
+Yt(1) = transpose(Y(1))
+Yt(2) = transpose(Y(2))
+
+
