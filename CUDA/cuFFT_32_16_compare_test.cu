@@ -18,11 +18,15 @@
 
 // Helper
 /* To process command line input */
-# include "nvidia_helper/helper_string.h"
+#include "nvidia_helper/helper_string.h"
+/* To check cuda state */
+#include "nvidia_helper/checkCudaErrors.h"
 
 #define N 128
 typedef half2 Chalf;
 typedef float2 Csingle;
+
+int DISPLAY_DATA = 1;
 
 int run_test_FP32(int input_size){
     printf("[cuFFT32] is starting...\n");
@@ -34,36 +38,25 @@ int run_test_FP32(int input_size){
         h_idata[i].x = rand() / (0.5 * static_cast<float>(RAND_MAX)) - 1;
         h_idata[i].y = rand() / (0.5 * static_cast<float>(RAND_MAX)) - 1;
     }
-    h_idata[0].x = 1; h_idata[0].y = 2; h_idata[1].x = 0; h_idata[1].y = 0; 
-    h_idata[2].x = 0; h_idata[2].y = 1; h_idata[3].x = -1; h_idata[3].y = 0;
-    for (unsigned int i = 0; i < input_size; i++) {
-        printf("x[%d]=(%f, %f); ", i, h_idata[i].x, h_idata[i].y);
+    if (input_size == 4) {
+        h_idata[0].x = 1; h_idata[0].y = 2; h_idata[1].x = 0; h_idata[1].y = 0; 
+        h_idata[2].x = 0; h_idata[2].y = 1; h_idata[3].x = -1; h_idata[3].y = 0;
     }
-    printf("\n"); 
+    if (DISPLAY_DATA == 1) {
+        printf("Input data: \n");
+        for (unsigned int i = 0; i < input_size; i++) {
+            printf("x[%d]=(%.2f, %.2f); \n", i, h_idata[i].x, h_idata[i].y);
+        }
+        printf("\n"); 
+    }
 
     // Allocate device momory for input and output
     Csingle *d_idata, *d_odata;
-    cudaError_t error;
-    error = cudaMalloc((void **) &d_idata, mem_size);
-    if (error != cudaSuccess)
-    {
-        printf("cudaMalloc d_idata returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
-        exit(EXIT_FAILURE);
-    }
-    error = cudaMalloc((void **) &d_odata, mem_size);
-    if (error != cudaSuccess)
-    {
-        printf("cudaMalloc d_odata returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
-        exit(EXIT_FAILURE);
-    }
+    checkCudaErrors(cudaMalloc((void **) &d_idata, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &d_odata, mem_size));
 
     // Copy host data to device
-    error = cudaMemcpy(d_idata, h_idata, mem_size, cudaMemcpyHostToDevice);
-    if (error != cudaSuccess)
-    {
-        printf("cudaMemcpy (d_idata,h_idata) returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
-        exit(EXIT_FAILURE);
-    }
+    checkCudaErrors(cudaMemcpy(d_idata, h_idata, mem_size, cudaMemcpyHostToDevice));
 
     // cuFFT plan
     cufftResult result;
@@ -73,7 +66,7 @@ int run_test_FP32(int input_size){
     result = cufftCreate(&plan);
     if (result != CUFFT_SUCCESS)
     {
-        printf("cufftCreate (plan) returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
+        printf("cufftCreate (plan) returned error code %d, line(%d)\n", result, __LINE__);
         exit(EXIT_FAILURE);
     }
     result = cufftXtMakePlanMany(plan, 1, &input_size_long, NULL, 1, 1, \
@@ -81,48 +74,70 @@ int run_test_FP32(int input_size){
                          &workSize, CUDA_C_32F);
     if (result != CUFFT_SUCCESS)
     {
-        printf("cufftXtMakePlanMany (plan) returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
+        printf("cufftXtMakePlanMany (plan) returned error code %d, line(%d)\n", result, __LINE__);
         exit(EXIT_FAILURE);
     }
     printf("Temporary buffer size %li bytes\n", workSize);
 
     // cuFFT warm-up execution
-    result = cufftExecC2C(plan, reinterpret_cast<cufftComplex *>(d_idata), \
+    result = cufftXtExec(plan, reinterpret_cast<cufftComplex *>(d_idata), \
                           reinterpret_cast<cufftComplex *>(d_odata), \
                           CUFFT_FORWARD);
     if (result != CUFFT_SUCCESS)
     {
-        printf("cufftExecC2C (plan) returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
+        printf("cufftExecC2C (plan) returned error code %d, line(%d)\n", result, __LINE__);
         exit(EXIT_FAILURE);
     }
 
     // Measure execution time
     cudaDeviceSynchronize();
+    // Allocate CUDA events
     cudaEvent_t start;
     checkCudaErrors(cudaEventCreate(&start));
     cudaEvent_t stop;
     checkCudaErrors(cudaEventCreate(&stop));
-
+    // Record the start event
+    checkCudaErrors(cudaEventRecord(start, NULL));
+    // Repeatedly execute cuFFT
+    int nIter = 300;
+    for (int i = 0; i < nIter; i++){
+        result = cufftXtExec(plan, reinterpret_cast<cufftComplex *>(d_idata), \
+                              reinterpret_cast<cufftComplex *>(d_odata), \
+                              CUFFT_FORWARD);
+    }
+    // Record the stop event
+    checkCudaErrors(cudaEventRecord(stop, NULL));
+    // Wait for the stop event to complete
+    checkCudaErrors(cudaEventSynchronize(stop));
+    // Calculate performance
+    float msecTotal = 0.0f;
+    checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+    float msecPerFFT = msecTotal / nIter;
 
     // Copy Device memory to host
     Csingle *h_odata = (Csingle *)malloc(mem_size);
-    error = cudaMemcpy(h_odata, d_odata, mem_size, cudaMemcpyDeviceToHost);
-    if (error != cudaSuccess)
-    {
-        printf("cudaMemcpy (h_odata,d_odata) returned error %s (code %d), line(%d)\n", cudaGetErrorString(error), error, __LINE__);
-        exit(EXIT_FAILURE);
-    }
+    checkCudaErrors(cudaMemcpy(h_odata, d_odata, mem_size, cudaMemcpyDeviceToHost));
 
     // Print result
-    for (unsigned int i = 0; i < input_size; i++) {
-        printf("x[%d]=(%f, %f); ", i, h_odata[i].x, h_odata[i].y);
+    if (DISPLAY_DATA == 1) {
+        printf("FFT result: \n");
+        for (unsigned int i = 0; i < input_size; i++) {
+            printf("x[%d]=(%.2f, %.2f); \n", i, h_odata[i].x, h_odata[i].y);
+        }
+        printf("\n");
     }
-    printf("\n"); 
+
+    // Print the performance
+    printf("Performance of cuFFT32: Problem size= %d, Time= %.5f msec\n", \
+        input_size,
+        msecPerFFT);
 
     // Clean up content and memory
+    checkCudaErrors(cudaEventDestroy(start));
+    checkCudaErrors(cudaEventDestroy(stop));
     cufftDestroy(plan);
-    cudaFree(d_idata);
-    cudaFree(d_odata);
+    checkCudaErrors(cudaFree(d_idata));
+    checkCudaErrors(cudaFree(d_odata));
     free(h_idata);
     free(h_odata);
 
@@ -131,18 +146,128 @@ int run_test_FP32(int input_size){
 
 int run_test_FP16(int input_size){
     printf("[cuFFT16] is starting...\n");
-    Chalf *h_idata = (Chalf *)malloc(input_size*sizeof(Chalf));
-    Chalf *d_idata, *d_odata;
     
-    printf("size: %d\n", sizeof(Chalf));    
+    // Initialize the memory for the input data
+    int mem_size = input_size*sizeof(Chalf);
+    Chalf *h_idata = (Chalf *)malloc(mem_size);
+    for (unsigned int i = 0; i < input_size; i++) {
+        h_idata[i].x = rand() / (0.5 * static_cast<float>(RAND_MAX)) - 1;
+        h_idata[i].y = rand() / (0.5 * static_cast<float>(RAND_MAX)) - 1;
+    }
+    if (input_size == 4) {
+        h_idata[0].x = 1.0f; h_idata[0].y = 2.0f;
+        h_idata[1].x = 0.0f; h_idata[1].y = 0.0f; 
+        h_idata[2].x = 0.0f; h_idata[2].y = 1.0f;
+        h_idata[3].x = -1.0f; h_idata[3].y = 0.0f;
+    }
+    if (DISPLAY_DATA == 1) {
+        printf("Input data: \n");
+        for (unsigned int i = 0; i < input_size; i++) {
+            printf("x[%d]=(%.2f, %.2f); \n", i, (float)h_idata[i].x, (float)h_idata[i].y);
+        }
+        printf("\n"); 
+    }
+
+    // Allocate device momory for input and output
+    Chalf *d_idata, *d_odata;
+    checkCudaErrors(cudaMalloc((void **) &d_idata, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &d_odata, mem_size));
+
+    // Copy host data to device
+    checkCudaErrors(cudaMemcpy(d_idata, h_idata, mem_size, cudaMemcpyHostToDevice));
+
+    // cuFFT plan
+    cufftResult result;
+    cufftHandle plan;
+    size_t workSize;
+    long long int input_size_long = input_size;
+    result = cufftCreate(&plan);
+    if (result != CUFFT_SUCCESS)
+    {
+        printf("cufftCreate (plan) returned error code %d, line(%d)\n", result, __LINE__);
+        exit(EXIT_FAILURE);
+    }
+    result = cufftXtMakePlanMany(plan, 1, &input_size_long, NULL, 1, 1, \
+                         CUDA_C_16F, NULL, 1, 1, CUDA_C_16F, 1, \
+                         &workSize, CUDA_C_16F);
+    if (result != CUFFT_SUCCESS)
+    {
+        printf("cufftXtMakePlanMany (plan) returned error code %d, line(%d)\n", result, __LINE__);
+        exit(EXIT_FAILURE);
+    }
+    printf("Temporary buffer size %li bytes\n", workSize);
+
+    // cuFFT warm-up execution
+    result = cufftXtExec(plan, reinterpret_cast<cufftComplex *>(d_idata), \
+                          reinterpret_cast<cufftComplex *>(d_odata), \
+                          CUFFT_FORWARD);
+    if (result != CUFFT_SUCCESS)
+    {
+        printf("cufftExecC2C (plan) returned error code %d, line(%d)\n", result, __LINE__);
+        exit(EXIT_FAILURE);
+    }
+
+    // Measure execution time
+    cudaDeviceSynchronize();
+    // Allocate CUDA events
+    cudaEvent_t start;
+    checkCudaErrors(cudaEventCreate(&start));
+    cudaEvent_t stop;
+    checkCudaErrors(cudaEventCreate(&stop));
+    // Record the start event
+    checkCudaErrors(cudaEventRecord(start, NULL));
+    // Repeatedly execute cuFFT
+    int nIter = 300;
+    for (int i = 0; i < nIter; i++){
+        result = cufftXtExec(plan, reinterpret_cast<cufftComplex *>(d_idata), \
+                              reinterpret_cast<cufftComplex *>(d_odata), \
+                              CUFFT_FORWARD);
+    }
+    // Record the stop event
+    checkCudaErrors(cudaEventRecord(stop, NULL));
+    // Wait for the stop event to complete
+    checkCudaErrors(cudaEventSynchronize(stop));
+    // Calculate performance
+    float msecTotal = 0.0f;
+    checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+    float msecPerFFT = msecTotal / nIter;
+
+    // Copy Device memory to host
+    Chalf *h_odata = (Chalf *)malloc(mem_size);
+    checkCudaErrors(cudaMemcpy(h_odata, d_odata, mem_size, cudaMemcpyDeviceToHost));
+
+    // Print result
+    if (DISPLAY_DATA == 1) {
+        printf("FFT result: \n");
+        for (unsigned int i = 0; i < input_size; i++) {
+            printf("x[%d]=(%.2f, %.2f); \n", i, (float)h_odata[i].x, (float)h_odata[i].y);
+        }
+        printf("\n");
+    }
+    // Print the performance
+    printf("Performance of cuFFT16: Problem size= %d, Time= %.5f msec\n", \
+        input_size,
+        msecPerFFT);
+
+    // Clean up content and memory
+    checkCudaErrors(cudaEventDestroy(start));
+    checkCudaErrors(cudaEventDestroy(stop));
+    cufftDestroy(plan);
+    checkCudaErrors(cudaFree(d_idata));
+    checkCudaErrors(cudaFree(d_odata));
+    free(h_idata);
+    free(h_odata);
     return 0;
 }
 
 int main(int argc, char **argv)
 {
     if (checkCmdLineFlag(argc, (const char **)argv, "help") ||
-            checkCmdLineFlag(argc, (const char **)argv, "?")) {
-        printf("Usage: -n=size (Input vector size) -device=ID (ID > 0 for deviceID)\n"); 
+            checkCmdLineFlag(argc, (const char **)argv, "?") ||
+            checkCmdLineFlag(argc, (const char **)argv, "h")) {
+        printf("Usage: -n=size (Input vector size)"
+	       " -device=ID (ID > 0 for deviceID)"
+               " -display=show_result (0 or 1) \n"); 
         exit(EXIT_SUCCESS);
     }
     
@@ -182,8 +307,14 @@ int main(int argc, char **argv)
     if (checkCmdLineFlag(argc, (const char **)argv, "n")) {
         n = getCmdLineArgumentInt(argc, (const char **)argv, "n");
     }
-    printf("Size = %d\n", n);
      
+    // Set display mode
+    if (checkCmdLineFlag(argc, (const char **)argv, "display")) {
+        int entered_mode = getCmdLineArgumentInt(argc, (const char **)argv, "display");
+        if (entered_mode == 0)  DISPLAY_DATA = 0;
+    }
+
+    printf("Problem size = %d\n", n);
 
     printf("[Testing of cuFFT FP32 and FP16] - Starting...\n");
     
