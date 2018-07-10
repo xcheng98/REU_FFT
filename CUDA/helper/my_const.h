@@ -1,0 +1,1 @@
+enum FFT_S {FFT_SUCCESS, FFT_FAILURE};

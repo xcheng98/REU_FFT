@@ -1,7 +1,7 @@
 /*
  * Implementing fft4 algorithm
  * It's not a complete FFT
- * To be used by other program
+ * To be used recursively by gfft
  */
 
 // C includes
@@ -19,12 +19,14 @@
 #include <helper/my_vector.h>
 #include <helper/my_matrix.h>
 
+fft::MatrixH F4_re;
+fft::MatrixH F4_im;
+
 int fft4()
 {
-    fft::MatrixF F4_re;
     F4_re.width = 4;
     F4_re.height = 4;
-    F4_re.array = (float*)malloc(F4_re.width * F4_re.height * sizeof(float));
+    F4_re.array = (half*)malloc(F4_re.width * F4_re.height * sizeof(half));
 
     F4_re(1, 1) = 1.0f;
 }
