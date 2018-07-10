@@ -9,6 +9,10 @@
  * Free memory:
  ** free(A.array)
  */
+
+#ifndef FFT_MY_VECTOR
+#define FFT_MY_VECTOR
+
 #include <math.h>
 #include <cuda_fp16.h>
 
@@ -32,4 +36,4 @@ namespace fft {
     } VectorH;
 }
 
-
+#endif /* FFT_MY_VECTOR */

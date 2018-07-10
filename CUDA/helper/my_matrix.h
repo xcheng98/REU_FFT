@@ -10,6 +10,9 @@
  ** free(A.array)
  */
 
+#ifndef FFT_MY_MATRIX
+#define FFT_MY_MATRIX
+
 // To suppory half type
 #include <math.h>
 #include <cuda_fp16.h>
@@ -37,4 +40,4 @@ namespace fft {
     } MatrixH;
 }
 
-
+#endif /* FFT_MY_MATRIX */
