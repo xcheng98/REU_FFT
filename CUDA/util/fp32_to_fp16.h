@@ -21,6 +21,12 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
             if (norm > scale1) scale1 = norm;
         }
         
+        // If all number are zero, skip
+	if (scale1 == 0.0f){
+            s1.element(j) = 0.0f;
+            continue;
+	}
+
         // Restrict scale range
         if (scale1 < EPS){
             scale1 = EPS;
@@ -40,6 +46,11 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
 
     // Get the normalized Xhi
     for (int j = 1; j <= B; j++){ 
+        // If all number are zero, skip
+        if (s1.element(j) == 0.0f){
+            continue;
+        }
+
         for (int i = 1; i <= N; i++) {
             Xtemp.element(i, j) = X.element(i, j) / s1.element(j);
             Xhi.element(i, j) = (half)(Xtemp.element(i, j));
@@ -48,13 +59,25 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
         }
     }
 
-    // Calculate Xhi
+    // Calculate lower scaling factor
     for (int j = 1; j <= B; j++){
+        // If all number are zero, skip
+        if (s1.element(j) == 0.0f){
+            continue;
+        }
+
         float scale2 = 0.0f;
         for (int i = 1; i <= N; i++){
             float norm = (float)fabs(Xtemp.element(i, j));
             if (norm > scale2) scale2 = norm;
         }
+
+        // If all remainders are zero, skip
+	if (scale2 == 0.0f){
+            s2.element(j) = 0.0f;
+            continue;
+	}
+
         if (scale2 < EPS){
             scale2 = EPS;
         }
@@ -66,13 +89,38 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
 
     // Normalize lower part
     for (int j = 1; j <= B; j++){
+        // If all number are zero, skip
+        if (s1.element(j) == 0.0f){
+            continue;
+        }
+
+        // If all remainders are zero, set X_lo to zero
+	if (s2.element(j) == 0.0f){
+            for (int i = 1; i <= N; i++){
+                Xlo.element(i, j) = (half) 0.0f;
+            }
+            continue;
+	}
+
         for (int i = 1; i <= N; i++){
             Xtemp.element(i, j) = Xtemp.element(i, j) / s2.element(j);
             Xlo.element(i, j) = (half) (Xtemp.element(i, j));
         }
     }
 
-    free(Xtemp.array);    
+    free(Xtemp.array);   
+    
+    // Deal with zero case
+    for (int j = 1; j <= B; j++){
+        if (s1.element(j) == 0.0f){
+            s2.element(j) == 0.0f;
+            for (int i = 0; i <= N; i++){
+                Xhi.element(i, j) = (half) 0.0f;
+                Xlo.element(i, j) = (half) 0.0f;
+            }
+        }
+    }
+
     return FFT_SUCCESS;
 }
 

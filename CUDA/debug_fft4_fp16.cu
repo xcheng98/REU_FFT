@@ -201,6 +201,15 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     //// Call splitting function
     FFT_S fft_status;
 
+    
+    printf("Before splitting: \n");
+    for (int j = 1; j <= 1; j++){
+        printf("Vector %d: \n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("Real, imaginary[%d] = (%.10f, %.10f) \n", i, X_re.element(i, j), X_im.element(i, j));
+        }
+    }
+
     fft_status = split_32_to_16(X_re, X_re_hi, X_re_lo, re_s1, re_s2, 4, B);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Data splitting error (split X_re).\n");
@@ -213,6 +222,16 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         return FFT_FAILURE;
     }
 
+
+    printf("Splitting result: \n");
+    for (int j = 1; j <= 1; j++){
+        printf("Splitting factor: \nre_s1 = %.10f, re_s2 = %.10f, \nim_s1 = %.10f, im_s2 = %.10f\n", re_s1.element(j), re_s2.element(j), im_s1.element(j), im_s2.element(j));
+        printf("Resulting vector %d: \n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("Real High, Low [%d] = (%.10f, %.10f) \n", i, (float)X_re_hi.element(i, j), (float)X_re_lo.element(i, j));
+            printf("Imaginary High, Low [%d] = (%.10f, %.10f) \n", i, (float)X_im_hi.element(i, j), (float)X_im_lo.element(i, j));
+        }
+    }
 
     // Copy input data to device
     status = cublasSetVector(4 * B * 4, sizeof(X_split[0]), X_split, 1, dev_input, 1);
@@ -261,20 +280,35 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     //// Convert F4_im result to FP32
     fp16_to_fp32<BLOCKSIZE> <<< grid, threads >>>(4 * B * 4, dev_temp_result, dev_result2);
 
+    float temp[4 * B * 4];  
+    printf("Real result1: \n");
+    status = cublasGetVector(4 * B * 4, sizeof(temp[0]), dev_result1, 1, temp, 1);
+    for (int i = 0; i < 4 * B * 4; i++ ) printf("%.10f, ", temp[i]);
+    printf("\n");
+    printf("Imaginary result2: \n");
+    status = cublasGetVector(4 * B * 4, sizeof(temp[0]), dev_result2, 1, temp, 1);
+    for (int i = 0; i < 4 * B * 4; i++ ) printf("%.10f, ", temp[i]);
+    printf("\n");
 
     // Scale, combine and get result, store in the first quarter and third quarter of result1
-    for (int j = 0; j < B; j++)
+    for (int j = 1; j <= B; j++)
     {
         //// Scale FM_re * X_re_h
-        alpha = re_s1.element(j + 1);
+        alpha = re_s1.element(j);
         status = cublasSscal(handle, 4, &alpha, dev_result1 + 4 * B * 0 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_h).\n");
             return FFT_FAILURE;
         }
 
+    printf("Scaling factor: %.5f \n", re_s1.element(j));
+    printf("After scaling 1: \n");
+    status = cublasGetVector(4 * B * 4, sizeof(temp[0]), dev_result1, 1, temp, 1);
+    for (int i = 0; i < 4 * B * 4; i++ ) printf("%.10f, ", temp[i]);
+    printf("\n");
+
         //// Scale FM_re * X_re_l and accumulate
-        alpha = re_s2.element(j + 1);
+        alpha = re_s2.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 1 + 4 * j, 1, dev_result1 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_l and accumulate).\n");
@@ -282,7 +316,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_im * X_im_h and accumulate
-        alpha = -1.0f * im_s1.element(j + 1);
+        alpha = -1.0f * im_s1.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 2 + 4 * j, 1, dev_result1 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_h and accumulate).\n");
@@ -290,7 +324,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_im * X_im_l and accumulate
-        alpha = -1.0f * im_s2.element(j + 1);
+        alpha = -1.0f * im_s2.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 3 + 4 * j, 1, dev_result1 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_l and accumulate).\n");
@@ -298,7 +332,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_re * X_im_h
-        alpha = im_s1.element(j + 1);
+        alpha = im_s1.element(j);
         status = cublasSscal(handle, 4, &alpha, dev_result1 + 4 * B * 2 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_h).\n");
@@ -306,7 +340,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_re * X_im_l and accumulate
-        alpha = im_s2.element(j + 1);
+        alpha = im_s2.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 3 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_l and accumulate).\n");
@@ -314,7 +348,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_im * X_re_h and accumulate
-        alpha = re_s1.element(j + 1);
+        alpha = re_s1.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 0 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_h and accumulate).\n");
@@ -322,7 +356,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
 
         //// Scale FM_im * X_re_l and accumulate
-        alpha = re_s2.element(j + 1);
+        alpha = re_s2.element(j);
         status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 1 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_l and accumulate).\n");
@@ -409,7 +443,7 @@ int main()
     // Setting input value
     srand(time(NULL));
     printf("The input is: \n");
-    for (int j = 1; j <= BATCH; j++){
+    for (int j = 1; j <= 1; j++){
         printf("Vector %d: \n", j);
         for (int i = 1; i <= 4; i++){
             X_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
@@ -418,14 +452,19 @@ int main()
         }
     }
 
-    status = fft4(BATCH, X_re, X_im, FX_re, FX_im);
+    X_re.element(1,1) = 1.0f; X_re.element(2,1) = 1.0f;
+    X_re.element(3,1) = 0.0f; X_re.element(4,1) = 0.0f;
+    X_im.element(1,1) = 0; X_im.element(2,1) = 0;
+    X_im.element(3,1) = 0; X_im.element(4,1) = 0;
+
+    status = fft4(1, X_re, X_im, FX_re, FX_im);
     if (status != FFT_SUCCESS){
         printf("Error in running fft calculation\n");
         exit(1);
     }
 
     printf("Result: \n");
-    for (int j = 1; j <= BATCH; j++){
+    for (int j = 1; j <= 1; j++){
         printf("Resulting vector %d: \n", j);
         for (int i = 1; i <= 4; i++){
             printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
@@ -437,5 +476,4 @@ int main()
     free(X_im.array);
     free(FX_re.array);
     free(FX_im.array);
-    return 0;
 }
