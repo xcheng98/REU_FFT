@@ -23,9 +23,9 @@
 #include "helper/my_const.h"
 #include "util/fp32_to_fp16.h"
 
-float UPPER_BOUND = 1000.0f;
-int BATCH = 4;
-int BLOCKSIZE = 16;
+const float UPPER_BOUND = 1000.0f;
+const int BATCH = 4;
+const int BLOCKSIZE = 16;
 
 fft::MatrixH F4_re;
 fft::MatrixH F4_im;
@@ -108,8 +108,8 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     //// Device variables
     half *dev_FM, *dev_input, *dev_temp_result;
     float *dev_result1, *dev_result2; // The first quarter and third quarter of dev_result1 stores final output
-    float alpha = 1.0f, beta = 0.0f; 
-
+    float alpha = 1.0f; 
+    half alpha_h = 1.0f, beta_h = 0.0f;
 
     // Initialize cublas
     status = cublasCreate(&handle);
@@ -163,53 +163,53 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
     //// Initialize Matrix and Vector data structure to store split result
     fft::MatrixH X_re_hi;
-    Xhi.width = B;
-    Xhi.height = 4;
-    Xhi.array = X_split + 4 * B * 0；
+    X_re_hi.width = B;
+    X_re_hi.height = 4;
+    X_re_hi.array = X_split + 4 * B * 0;
 
     fft::MatrixH X_re_lo;
-    Xlo.width = B;
-    Xlo.height = 4;
-    Xlo.array = X_split + 4 * B * 1；
+    X_re_lo.width = B;
+    X_re_lo.height = 4;
+    X_re_lo.array = X_split + 4 * B * 1;
 
     fft::MatrixH X_im_hi;
-    Xhi.width = B;
-    Xhi.height = 4;
-    Xhi.array = X_split + 4 * B * 2；
+    X_im_hi.width = B;
+    X_im_hi.height = 4;
+    X_im_hi.array = X_split + 4 * B * 2;
 
     fft::MatrixH X_im_lo;
-    Xlo.width = B;
-    Xlo.height = 4;
-    Xlo.array = X_split + 4 * B * 3；
+    X_im_lo.width = B;
+    X_im_lo.height = 4;
+    X_im_lo.array = X_split + 4 * B * 3;
 
     fft::VectorF re_s1;
-    scale1.size = B;
-    scale1.array = scales + B * 0;
+    re_s1.size = B;
+    re_s1.array = scales + B * 0;
 
     fft::VectorF re_s2;
-    scale2.size = B;
-    scale2.array = scales + B * 1;
+    re_s2.size = B;
+    re_s2.array = scales + B * 1;
 
     fft::VectorF im_s1;
-    scale1.size = B;
-    scale1.array = scales + B * 2;
+    im_s1.size = B;
+    im_s1.array = scales + B * 2;
 
     fft::VectorF im_s2;
-    scale2.size = B;
-    scale2.array = scales + B * 3;
+    im_s2.size = B;
+    im_s2.array = scales + B * 3;
 
     //// Call splitting function
     FFT_S fft_status;
 
     fft_status = split_32_to_16(X_re, X_re_hi, X_re_lo, re_s1, re_s2, 4, B);
     if (fft_status != FFT_SUCCESS){
-        fprintf(stderr, "!???! Data splitting error (split X_re).\n");
+        fprintf(stderr, "!!!!! Data splitting error (split X_re).\n");
         return FFT_FAILURE;
     }
 
     fft_status = split_32_to_16(X_im, X_im_hi, X_im_lo, im_s1, im_s2, 4, B);
     if (fft_status != FFT_SUCCESS){
-        fprintf(stderr, "!???! Data splitting error (split X_im).\n");
+        fprintf(stderr, "!!!!! Data splitting error (split X_im).\n");
         return FFT_FAILURE;
     }
 
@@ -231,8 +231,8 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     }
 
     //// Call cublas gemm on F4_re
-    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, dev_FM,
-                       4, dev_input, 4, &beta, dev_temp_result, 4);
+    status = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha_h, dev_FM,
+                       4, dev_input, 4, &beta_h, dev_temp_result, 4);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
         return FFT_FAILURE;
@@ -241,7 +241,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     //// Convert F4_re result to FP32
     int grid = (4 * B * 4 + BLOCKSIZE) / BLOCKSIZE;
     int threads = BLOCKSIZE;
-    fp16_to_fp32<BLOCKSIZE> <<<grid, threads>>>(4 * B * 4, dev_temp_result, dev_result1);
+    fp16_to_fp32<BLOCKSIZE> <<< grid, threads >>>(4 * B * 4, dev_temp_result, dev_result1);
 
     //// Copy F4_im to device
     status = cublasSetVector(4 * 4, sizeof(F4_im.array[0]), F4_im.array, 1, dev_FM, 1);
@@ -251,15 +251,15 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     }
 
     //// Call cublas gemm on F4_im
-    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, dev_FM,
-                       4, dev_input, 4, &beta, dev_temp_result, 4);
+    status = cublasHgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha_h, dev_FM,
+                       4, dev_input, 4, &beta_h, dev_temp_result, 4);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
         return FFT_FAILURE;
     }
 
     //// Convert F4_im result to FP32
-    fp16_to_fp32<BLOCKSIZE> <<<grid, threads>>>(4 * B * 4, dev_temp_result, dev_result2);
+    fp16_to_fp32<BLOCKSIZE> <<< grid, threads >>>(4 * B * 4, dev_temp_result, dev_result2);
 
 
     // Scale, combine and get result, store in the first quarter and third quarter of result1

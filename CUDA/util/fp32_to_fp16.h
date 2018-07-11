@@ -7,9 +7,9 @@
 
 #define EPS 0.0000001192f
 
-#include "helper/my_vector.h"
-#include "helper/my_matrix.h"
-#include "helper/my_const.h"
+#include "../helper/my_vector.h"
+#include "../helper/my_matrix.h"
+#include "../helper/my_const.h"
 
 FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::VectorF s1, fft::VectorF s2, int N, int B)
 {
