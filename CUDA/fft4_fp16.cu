@@ -21,20 +21,20 @@
 #include "helper/my_vector.h"
 #include "helper/my_matrix.h"
 #include "helper/my_const.h"
-#include "helper/fp32_to_fp16.h"
+#include "util/fp32_to_fp16.h"
 
 float UPPER_BOUND = 1000.0f;
 int BATCH = 4;
+int BLOCKSIZE = 16;
 
-
-fft::MatrixF F4_re;
-fft::MatrixF F4_im;
+fft::MatrixH F4_re;
+fft::MatrixH F4_im;
 
 FFT_S init_F4()
 {
     F4_re.width = 4;
     F4_re.height = 4;
-    F4_re.array = (float*)malloc(F4_re.width * F4_re.height * sizeof(float));
+    F4_re.array = (half*)malloc(F4_re.width * F4_re.height * sizeof(half));
 
     F4_re.element(1, 1) = 1.0f;
     F4_re.element(2, 1) = 1.0f;
@@ -55,7 +55,7 @@ FFT_S init_F4()
     
     F4_im.width = 4;
     F4_im.height = 4;
-    F4_im.array = (float*)malloc(F4_re.width * F4_re.height * sizeof(float));
+    F4_im.array = (half*)malloc(F4_re.width * F4_re.height * sizeof(half));
 
     F4_im.element(1, 1) = 0.0f;
     F4_im.element(2, 1) = 0.0f;
@@ -77,93 +77,259 @@ FFT_S init_F4()
     return FFT_SUCCESS;
 }
 
+template <int BLOCK_SIZE> __global__ void fp16_to_fp32(int size, half* input, float* output)
+{
+    /* 
+     * Convert the input half-precision vector to single-precision
+     * Block and thread layout should be 1D
+     * Block size need to be specified
+     * */
+    int bx = blockIdx.x;
+    int tx = threadIdx.x;
+    int index = bx * BLOCK_SIZE + tx;
+
+    if (index < size) {
+        output[index] = __half2float(input[index]);
+    }
+
+}
+
+
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
 {
+    // Variable declaration
     cublasStatus_t status;
     cublasHandle_t handle;
-    float *dev_FM, *dev_input, *dev_result1, *dev_result2;
-    float alpha = 1.0f, beta = 0.0f;
 
-    // Initialize cublas and allocate device memory
+    //// Host variables
+    float *scales; // = *re_s1, *re_s2, *im_s1, *im_s2;
+    half *X_split; // = *X_re_hi, *X_re_lo, *X_im_hi, *X_im_lo;
+
+    //// Device variables
+    half *dev_FM, *dev_input, *dev_temp_result;
+    float *dev_result1, *dev_result2; // The first quarter and third quarter of dev_result1 stores final output
+    float alpha = 1.0f, beta = 0.0f; 
+
+
+    // Initialize cublas
     status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS initialization error\n");
         return FFT_FAILURE;
     }
+
+    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! CUBLAS setting math mode error\n");
+        return FFT_FAILURE;
+    }
+
+
+    //  Allocate device memory
     if (cudaMalloc(reinterpret_cast<void **>(&dev_FM), 4 * 4 * sizeof(dev_FM[0])) !=
       cudaSuccess) {
         fprintf(stderr, "!!!! device memory allocation error (allocate Fourier Matrix)\n");
         return FFT_FAILURE;
     }
-    if (cudaMalloc(reinterpret_cast<void **>(&dev_input), 4 * B * 2 * sizeof(dev_input[0])) !=
+
+    if (cudaMalloc(reinterpret_cast<void **>(&dev_input), 4 * B * 4 * sizeof(dev_input[0])) !=
       cudaSuccess) {
         fprintf(stderr, "!!!! device memory allocation error (allocate Input Matrix)\n");
         return FFT_FAILURE;
     }
-    if (cudaMalloc(reinterpret_cast<void **>(&dev_result1), 4 * B * 2 * sizeof(dev_result1[0])) !=
+
+    if (cudaMalloc(reinterpret_cast<void **>(&dev_temp_result), 4 * B * 4 * sizeof(dev_temp_result[0])) !=
+      cudaSuccess) {
+        fprintf(stderr, "!!!! device memory allocation error (allocate Temporary Result Matrix)\n");
+        return FFT_FAILURE;
+    }
+
+    if (cudaMalloc(reinterpret_cast<void **>(&dev_result1), 4 * B * 4 * sizeof(dev_result1[0])) !=
       cudaSuccess) {
         fprintf(stderr, "!!!! device memory allocation error (allocate result 1 Matrix)\n");
         return FFT_FAILURE;
     }
-    if (cudaMalloc(reinterpret_cast<void **>(&dev_result2), 4 * B * 2 * sizeof(dev_result2[0])) !=
+
+    if (cudaMalloc(reinterpret_cast<void **>(&dev_result2), 4 * B * 4 * sizeof(dev_result2[0])) !=
       cudaSuccess) {
         fprintf(stderr, "!!!! device memory allocation error (allocate result 2 Matrix)\n");
         return FFT_FAILURE;
     }
 
-    // F4_re * (X_re, X_im)
-    //// Copy host data to device
+    // Split input
+    //// Allocate memory for scales and X_split
+    scales = (float*)malloc(B * 4 * sizeof(float));
+    X_split = (half*)malloc(4 * B * 4 * sizeof(half));
+
+    //// Initialize Matrix and Vector data structure to store split result
+    fft::MatrixH X_re_hi;
+    Xhi.width = B;
+    Xhi.height = 4;
+    Xhi.array = X_split + 4 * B * 0；
+
+    fft::MatrixH X_re_lo;
+    Xlo.width = B;
+    Xlo.height = 4;
+    Xlo.array = X_split + 4 * B * 1；
+
+    fft::MatrixH X_im_hi;
+    Xhi.width = B;
+    Xhi.height = 4;
+    Xhi.array = X_split + 4 * B * 2；
+
+    fft::MatrixH X_im_lo;
+    Xlo.width = B;
+    Xlo.height = 4;
+    Xlo.array = X_split + 4 * B * 3；
+
+    fft::VectorF re_s1;
+    scale1.size = B;
+    scale1.array = scales + B * 0;
+
+    fft::VectorF re_s2;
+    scale2.size = B;
+    scale2.array = scales + B * 1;
+
+    fft::VectorF im_s1;
+    scale1.size = B;
+    scale1.array = scales + B * 2;
+
+    fft::VectorF im_s2;
+    scale2.size = B;
+    scale2.array = scales + B * 3;
+
+    //// Call splitting function
+    FFT_S fft_status;
+
+    fft_status = split_32_to_16(X_re, X_re_hi, X_re_lo, re_s1, re_s2, 4, B);
+    if (fft_status != FFT_SUCCESS){
+        fprintf(stderr, "!???! Data splitting error (split X_re).\n");
+        return FFT_FAILURE;
+    }
+
+    fft_status = split_32_to_16(X_im, X_im_hi, X_im_lo, im_s1, im_s2, 4, B);
+    if (fft_status != FFT_SUCCESS){
+        fprintf(stderr, "!???! Data splitting error (split X_im).\n");
+        return FFT_FAILURE;
+    }
+
+
+    // Copy input data to device
+    status = cublasSetVector(4 * B * 4, sizeof(X_split[0]), X_split, 1, dev_input, 1);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! device access error (write X_re)\n");
+        return FFT_FAILURE;
+    }
+
+    
+    // Call cublas function and finish Matrix multiplication calculation
+    //// Copy F4_re to device
     status = cublasSetVector(4 * 4, sizeof(F4_re.array[0]), F4_re.array, 1, dev_FM, 1);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! device access error (write F4_re)\n");
         return FFT_FAILURE;
     }
-    status = cublasSetVector(4 * B, sizeof(X_re.array[0]), X_re.array, 1, dev_input, 1);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! device access error (write X_re)\n");
-        return FFT_FAILURE;
-    }
-    status = cublasSetVector(4 * B, sizeof(X_im.array[0]), X_im.array, 1, dev_input + 4 * B, 1);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! device access error (write X_im)\n");
-        return FFT_FAILURE;
-    }
-    //// Call cublas gemm
-    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 2, 4, &alpha, dev_FM,
-                       4, dev_input, 4, &beta, dev_result1, 4);
+
+    //// Call cublas gemm on F4_re
+    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, dev_FM,
+                       4, dev_input, 4, &beta, dev_temp_result, 4);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
         return FFT_FAILURE;
     }
 
-    // F4_im * (X_re, X_im)
-    //// Copy host data to device
+    //// Convert F4_re result to FP32
+    int grid = (4 * B * 4 + BLOCKSIZE) / BLOCKSIZE;
+    int threads = BLOCKSIZE;
+    fp16_to_fp32<BLOCKSIZE> <<<grid, threads>>>(4 * B * 4, dev_temp_result, dev_result1);
+
+    //// Copy F4_im to device
     status = cublasSetVector(4 * 4, sizeof(F4_im.array[0]), F4_im.array, 1, dev_FM, 1);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! device access error (write F4_im)\n");
         return FFT_FAILURE;
     }
-    //// Call cublas gemm
-    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 2, 4, &alpha, dev_FM,
-                       4, dev_input, 4, &beta, dev_result2, 4);
+
+    //// Call cublas gemm on F4_im
+    status = cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, dev_FM,
+                       4, dev_input, 4, &beta, dev_temp_result, 4);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
         return FFT_FAILURE;
     }
 
-    // Combine and get result, store in result1
-    alpha = -1.0f;
-    status = cublasSaxpy(handle, 4 * B, &alpha, dev_result2 + 4 * B, 1, dev_result1, 1);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (ac - bd).\n");
-        return FFT_FAILURE;
+    //// Convert F4_im result to FP32
+    fp16_to_fp32<BLOCKSIZE> <<<grid, threads>>>(4 * B * 4, dev_temp_result, dev_result2);
+
+
+    // Scale, combine and get result, store in the first quarter and third quarter of result1
+    for (int j = 0; j < B; j++)
+    {
+        //// Scale FM_re * X_re_h
+        alpha = re_s1.element(j);
+        status = cublasSscal(handle, 4, &alpha, dev_result1 + 4 * B * 0 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_h).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_re * X_re_l and accumulate
+        alpha = re_s2.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 1 + 4 * j, 1, dev_result1 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_l and accumulate).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_im * X_im_h and accumulate
+        alpha = -1.0f * im_s1.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 2 + 4 * j, 1, dev_result1 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_h and accumulate).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_im * X_im_l and accumulate
+        alpha = -1.0f * im_s2.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 3 + 4 * j, 1, dev_result1 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_l and accumulate).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_re * X_im_h
+        alpha = im_s1.element(j);
+        status = cublasSscal(handle, 4, &alpha, dev_result1 + 4 * B * 2 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_h).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_re * X_im_l and accumulate
+        alpha = im_s2.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 3 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_l and accumulate).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_im * X_re_h and accumulate
+        alpha = re_s1.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 0 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_h and accumulate).\n");
+            return FFT_FAILURE;
+        }
+
+        //// Scale FM_im * X_re_l and accumulate
+        alpha = re_s2.element(j);
+        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 1 + 4 * j, 1, dev_result1 + 4 * B * 2 + 4 * j, 1);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_l and accumulate).\n");
+            return FFT_FAILURE;
+        }
     }
-    alpha = 1.0f;
-    status = cublasSaxpy(handle, 4 * B, &alpha, dev_result2, 1, dev_result1 + 4 * B, 1);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (ad + bc).\n");
-        return FFT_FAILURE;
-    }
+
 
     // Copy device memory to host
     status = cublasGetVector(4 * B, sizeof(FX_re.array[0]), dev_result1, 1, FX_re.array, 1);
@@ -171,11 +337,15 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         fprintf(stderr, "!!!! device access error (read FX_re)\n");
         return FFT_FAILURE;
     }
-    status = cublasGetVector(4 * B, sizeof(FX_im.array[0]), dev_result1 + 4 * B, 1, FX_im.array, 1);
+    status = cublasGetVector(4 * B, sizeof(FX_im.array[0]), dev_result1 + 4 * B * 2, 1, FX_im.array, 1);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! device access error (read FX_im)\n");
         return FFT_FAILURE;
     }
+
+    // Deallocate host memory
+    free(scales);
+    free(X_split);
 
     // Deallocate device memory and shutdown
     if (cudaFree(dev_FM) != cudaSuccess) {
@@ -184,6 +354,10 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     }
     if (cudaFree(dev_input) != cudaSuccess) {
         fprintf(stderr, "!!!! device memory free error (free Input Matrix)\n");
+        return FFT_FAILURE;
+    }
+    if (cudaFree(dev_temp_result) != cudaSuccess) {
+        fprintf(stderr, "!!!! device memory free error (free temporary result Matrix)\n");
         return FFT_FAILURE;
     }
     if (cudaFree(dev_result1) != cudaSuccess) {
@@ -244,7 +418,7 @@ int main()
         }
     }
 
-    status = fft4(BATCH, X_re,X_im, FX_re, FX_im);
+    status = fft4(BATCH, X_re, X_im, FX_re, FX_im);
     if (status != FFT_SUCCESS){
         printf("Error in running fft calculation\n");
         exit(1);
