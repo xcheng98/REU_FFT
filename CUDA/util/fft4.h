@@ -1,97 +1,36 @@
 /*
- * Implementing fft4 algorithm
- * Input is multiple fp32 vector, number given by B
- * First split every input vector to two fp16 vectors
- * It's not a complete FFT
- * To be used recursively by gfft
+ * fft4 algorithm header
+ * Using fp16
  * Using unified memory
+ * To be used recursively by gfft
  */
+
+#ifndef FFT_FFT4_H
+#define FFT_FFT4_H
 
 // C includes
 #include <stdio.h>
-#include <assert.h>
 #include <math.h>
 #include <stdlib.h>
-#include <string.h>
 
 // CUDA includes
 #include <cuda_runtime.h>
 #include <cublas_v2.h>
-#include <cuda_fp16.h>
 
 // Matrix and vector
-#include "helper/my_vector.h"
-#include "helper/my_matrix.h"
-#include "helper/my_const.h"
-#include "util/fp32_to_fp16.h"
+#include "../helper/my_vector.h"
+#include "../helper/my_matrix.h"
+#include "../helper/my_const.h"
+
+// Other utilities
+#include "fp32_to_fp16.h"
+#include "fourier_matrix_4.h"
 
 // CUDA helper: to check error
-#include "nvidia_helper/checkCudaErrors.h"
+#include "../nvidia_helper/checkCudaErrors.h"
 
-const float UPPER_BOUND = 1.0f;
-const int BATCH = 4;
-// const int BLOCKSIZE = 16;
-
-fft::MatrixH F4_re;
-fft::MatrixH F4_im;
-
-FFT_S init_F4()
-{
-    F4_re.element(1, 1) = 1.0f;
-    F4_re.element(2, 1) = 1.0f;
-    F4_re.element(3, 1) = 1.0f;
-    F4_re.element(4, 1) = 1.0f;
-    F4_re.element(1, 2) = 1.0f;
-    F4_re.element(2, 2) = 0.0f;
-    F4_re.element(3, 2) =-1.0f;
-    F4_re.element(4, 2) = 0.0f;
-    F4_re.element(1, 3) = 1.0f;
-    F4_re.element(2, 3) =-1.0f;
-    F4_re.element(3, 3) = 1.0f;
-    F4_re.element(4, 3) =-1.0f;
-    F4_re.element(1, 4) = 1.0f;
-    F4_re.element(2, 4) = 0.0f;
-    F4_re.element(3, 4) =-1.0f;
-    F4_re.element(4, 4) = 0.0f;
-
-    F4_im.element(1, 1) = 0.0f;
-    F4_im.element(2, 1) = 0.0f;
-    F4_im.element(3, 1) = 0.0f;
-    F4_im.element(4, 1) = 0.0f;
-    F4_im.element(1, 2) = 0.0f;
-    F4_im.element(2, 2) =-1.0f;
-    F4_im.element(3, 2) = 0.0f;
-    F4_im.element(4, 2) = 1.0f;
-    F4_im.element(1, 3) = 0.0f;
-    F4_im.element(2, 3) = 0.0f;
-    F4_im.element(3, 3) = 0.0f;
-    F4_im.element(4, 3) = 0.0f;
-    F4_im.element(1, 4) = 0.0f;
-    F4_im.element(2, 4) = 1.0f;
-    F4_im.element(3, 4) = 0.0f;
-    F4_im.element(4, 4) =-1.0f;
-
-    return FFT_SUCCESS;
-}
-
-namespace fft{
-    template <int BLOCK_SIZE> __global__ void _half_to_single(int size, half* input, float* output)
-    {
-        /* 
-         * Convert the input half-precision vector to single-precision
-         * Block and thread layout should be 1D
-         * Block size need to be specified
-         * */
-        int bx = blockIdx.x;
-        int tx = threadIdx.x;
-        int index = bx * BLOCK_SIZE + tx;
-
-        if (index < size) {
-            output[index] = __half2float(input[index]);
-        }
-    }
-}
-
+extern fft::MatrixH F4_re;
+extern fft::MatrixH F4_im;
 
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
 {
@@ -379,3 +318,5 @@ int main()
 
     return 0;
 }
+
+#endif /* FFT_FFT4_H */

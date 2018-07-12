@@ -1,10 +1,9 @@
 /*
- * Implementing fft4 algorithm
- * Input is multiple fp32 vector, number given by B
- * First split every input vector to two fp16 vectors
- * It's not a complete FFT
- * To be used recursively by gfft
- * Using unified memory
+ * Implementing the FFT algorithm for general input
+ * Input should be fp32 vectors with size equals to the power of 4
+ * Number of vectors is given by BATCH (B)
+ * Recursive algorithm
+ * Base case is fft4
  */
 
 // C includes
@@ -23,78 +22,30 @@
 #include "helper/my_vector.h"
 #include "helper/my_matrix.h"
 #include "helper/my_const.h"
+
+// Utility programs
 #include "util/fp32_to_fp16.h"
+#include "util/fourier_matrix_4.h"
+#include "util/fft4.h"
 
 // CUDA helper: to check error
 #include "nvidia_helper/checkCudaErrors.h"
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 4;
-// const int BLOCKSIZE = 16;
+const int BATCH = 1;
+const int SIZE = 16;
 
-fft::MatrixH F4_re;
-fft::MatrixH F4_im;
+extern fft::MatrixH F4_re;
+extern fft::MatrixH F4_im;
 
-FFT_S init_F4()
+FFT_S gfft(int N, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
 {
-    F4_re.element(1, 1) = 1.0f;
-    F4_re.element(2, 1) = 1.0f;
-    F4_re.element(3, 1) = 1.0f;
-    F4_re.element(4, 1) = 1.0f;
-    F4_re.element(1, 2) = 1.0f;
-    F4_re.element(2, 2) = 0.0f;
-    F4_re.element(3, 2) =-1.0f;
-    F4_re.element(4, 2) = 0.0f;
-    F4_re.element(1, 3) = 1.0f;
-    F4_re.element(2, 3) =-1.0f;
-    F4_re.element(3, 3) = 1.0f;
-    F4_re.element(4, 3) =-1.0f;
-    F4_re.element(1, 4) = 1.0f;
-    F4_re.element(2, 4) = 0.0f;
-    F4_re.element(3, 4) =-1.0f;
-    F4_re.element(4, 4) = 0.0f;
-
-    F4_im.element(1, 1) = 0.0f;
-    F4_im.element(2, 1) = 0.0f;
-    F4_im.element(3, 1) = 0.0f;
-    F4_im.element(4, 1) = 0.0f;
-    F4_im.element(1, 2) = 0.0f;
-    F4_im.element(2, 2) =-1.0f;
-    F4_im.element(3, 2) = 0.0f;
-    F4_im.element(4, 2) = 1.0f;
-    F4_im.element(1, 3) = 0.0f;
-    F4_im.element(2, 3) = 0.0f;
-    F4_im.element(3, 3) = 0.0f;
-    F4_im.element(4, 3) = 0.0f;
-    F4_im.element(1, 4) = 0.0f;
-    F4_im.element(2, 4) = 1.0f;
-    F4_im.element(3, 4) = 0.0f;
-    F4_im.element(4, 4) =-1.0f;
-
-    return FFT_SUCCESS;
-}
-
-namespace fft{
-    template <int BLOCK_SIZE> __global__ void _half_to_single(int size, half* input, float* output)
-    {
-        /* 
-         * Convert the input half-precision vector to single-precision
-         * Block and thread layout should be 1D
-         * Block size need to be specified
-         * */
-        int bx = blockIdx.x;
-        int tx = threadIdx.x;
-        int index = bx * BLOCK_SIZE + tx;
-
-        if (index < size) {
-            output[index] = __half2float(input[index]);
-        }
+    
+    if (N == 4) {
+        return fft4(B, X_re, X_im, FX_re, FX_im);
     }
-}
 
 
-FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
-{
     // Variable declaration
     cublasStatus_t status;
     cublasHandle_t handle;
@@ -298,64 +249,47 @@ int main()
 {
     int mem_size;
 
-    // Allocate unified memory for Fourier Matrix
-    F4_re.width = 4;
-    F4_re.height = 4;
-    mem_size = F4_re.width * F4_re.height * sizeof(half);
-    checkCudaErrors(cudaMallocManaged((void **) &(F4_re.array), mem_size));
-    F4_im.width = 4;
-    F4_im.height = 4;
-    mem_size = F4_im.width * F4_im.height * sizeof(half);
-    checkCudaErrors(cudaMallocManaged((void **) &(F4_im.array), mem_size));
+    // allocate unified memory for input matrix
+    fft::MatrixF input_re;
+    input_re.width = BATCH;
+    input_re.height = SIZE;
+    mem_size = input_re.width * input_re.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(input_re.array), mem_size));
+    fft::MatrixF input_im;
+    input_im.width = BATCH;
+    input_im.height = SIZE;
+    mem_size = input_im.width * input_im.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(input_im.array), mem_size));
 
-    FFT_S status;
-    status = init_F4();
-    if (status != FFT_SUCCESS){
-        printf("Error in Fourier matrix initialization\n");
-        exit(1);
-    }
-
-    fft::MatrixF X_re;
-    X_re.height = 4;
-    X_re.width = BATCH;
-    mem_size = X_re.height * X_re.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(X_re.array), mem_size));
-
-    fft::MatrixF X_im;
-    X_im.height = 4;
-    X_im.width = BATCH;
-    mem_size = X_im.height * X_im.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(X_im.array), mem_size));
-
-    fft::MatrixF FX_re;
-    FX_re.height = 4;
-    FX_re.width = BATCH;
-    mem_size = FX_re.height * FX_re.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(FX_re.array), mem_size));
-
-    fft::MatrixF FX_im;
-    FX_im.height = 4;
-    FX_im.width = BATCH;
-    mem_size = FX_im.height * FX_im.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(FX_im.array), mem_size));
-
-    cudaDeviceSynchronize();
-
-    // Setting input value
+    // Initialize the input matrix
     srand(time(NULL));
     printf("The input is: \n");
-    for (int j = 1; j <= BATCH; j++){
+    for (int j = 1; i <= BATCH; i++){
         printf("Vector %d: \n", j);
-        for (int i = 1; i <= 4; i++){
-            X_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            X_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
+        for (int i = 1; j <= SIZE; j++){
+            input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
+            input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             printf("X[%d] = (%.10f, %.10f) \n", i, X_re.element(i, j), X_im.element(i, j));
         }
+        printf("\n");
     }
+    
+    // allocate unified memory for output matrix
+    fft::MatrixF output_re;
+    output_re.width = BATCH;
+    output_re.height = SIZE;
+    mem_size = output_re.width * output_re.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(output_re.array), mem_size));
+    fft::MatrixF output_im;
+    output_im.width = BATCH;
+    output_im.height = SIZE;
+    mem_size = output_im.width * output_im.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(output_im.array), mem_size));
 
-    status = fft4(BATCH, X_re, X_im, FX_re, FX_im);
+
+    status = gfft(SIZE, BATCH, input_re, input_im, output_re, output_im);
     if (status != FFT_SUCCESS){
-        printf("Error in running fft calculation\n");
+        printf("Error in running fft algorithm\n");
         exit(1);
     }
 
@@ -364,18 +298,15 @@ int main()
     printf("Result: \n");
     for (int j = 1; j <= BATCH; j++){
         printf("Resulting vector %d: \n", j);
-        for (int i = 1; i <= 4; i++){
+        for (int i = 1; i <= SIZE; i++){
             printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
         }
     }
 
-    checkCudaErrors(cudaFree(F4_re.array));
-    checkCudaErrors(cudaFree(F4_im.array));
-
-    checkCudaErrors(cudaFree(X_re.array));
-    checkCudaErrors(cudaFree(X_im.array));
-    checkCudaErrors(cudaFree(FX_re.array));
-    checkCudaErrors(cudaFree(FX_im.array));
+    checkCudaErrors(cudaFree(input_re.array));
+    checkCudaErrors(cudaFree(input_im.array));
+    checkCudaErrors(cudaFree(output_re.array));
+    checkCudaErrors(cudaFree(output_im.array));
 
     return 0;
 }
