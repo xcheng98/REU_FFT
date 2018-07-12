@@ -28,9 +28,9 @@
 // CUDA helper: to check error
 #include "nvidia_helper/checkCudaErrors.h"
 
-const float UPPER_BOUND = 1000.0f;
+const float UPPER_BOUND = 1.0f;
 const int BATCH = 4;
-const int BLOCKSIZE = 16;
+// const int BLOCKSIZE = 16;
 
 fft::MatrixH F4_re;
 fft::MatrixH F4_im;
@@ -187,7 +187,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     // Call cublas function and finish Matrix multiplication calculation
     //// Call cublas gemm on F4_re
     status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_re.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result1, CUDA_R_32F, 4, CUDA_R_32F, algo);
+                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result1, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
         return FFT_FAILURE;
@@ -195,7 +195,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
     //// Call cublas gemm on F4_im
     status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_im.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result2, CUDA_R_32F, 4, CUDA_R_32F, algo);
+                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result2, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
         return FFT_FAILURE;
@@ -207,7 +207,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     {
         //// Scale FM_re * X_re_h and accumulate
         alpha = re_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 0 + 4 * j, 1, FX_re.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 0 + 4 * j, 1, FX_re.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_h and accumulate).\n");
             return FFT_FAILURE;
@@ -215,7 +215,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_re * X_re_l and accumulate
         alpha = re_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 1 + 4 * j, 1, FX_re.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 1 + 4 * j, 1, FX_re.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_l and accumulate).\n");
             return FFT_FAILURE;
@@ -223,7 +223,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_im * X_im_h and accumulate
         alpha = -1.0f * im_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 2 + 4 * j, 1, FX_re.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 2 + 4 * j, 1, FX_re.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_h and accumulate).\n");
             return FFT_FAILURE;
@@ -231,7 +231,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_im * X_im_l and accumulate
         alpha = -1.0f * im_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 3 + 4 * j, 1, FX_re.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 3 + 4 * j, 1, FX_re.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_l and accumulate).\n");
             return FFT_FAILURE;
@@ -239,7 +239,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_re * X_im_h and accumulate
         alpha = im_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 2 + 4 * j, 1, FX_im.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 2 + 4 * j, 1, FX_im.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_h and accumulate).\n");
             return FFT_FAILURE;
@@ -247,7 +247,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_re * X_im_l and accumulate
         alpha = im_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result1 + 4 * B * 3 + 4 * j, 1, FX_im.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 3 + 4 * j, 1, FX_im.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_l and accumulate).\n");
             return FFT_FAILURE;
@@ -255,7 +255,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_im * X_re_h and accumulate
         alpha = re_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 0 + 4 * j, 1, FX_im.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 0 + 4 * j, 1, FX_im.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_h and accumulate).\n");
             return FFT_FAILURE;
@@ -263,7 +263,7 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
         //// Scale FM_im * X_re_l and accumulate
         alpha = re_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, dev_result2 + 4 * B * 1 + 4 * j, 1, FX_im.array + 4 * j, 1);
+        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 1 + 4 * j, 1, FX_im.array + 4 * j, 1);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_l and accumulate).\n");
             return FFT_FAILURE;
