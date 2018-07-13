@@ -54,10 +54,13 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
         for (int i = 1; i <= N; i++) {
             Xtemp.element(i, j) = X.element(i, j) / s1.element(j);
             Xhi.element(i, j) = (half)(Xtemp.element(i, j));
+            printf("%f \n", (float)Xhi.element(i, j));
             // Using Xtemp to store the residual
             Xtemp.element(i, j) = X.element(i, j) - s1.element(j) * (float)Xhi.element(i, j);
         }
     }
+
+
 
     // Calculate lower scaling factor
     for (int j = 1; j <= B; j++){
@@ -86,6 +89,8 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
         }
         s2.element(j) = scale2;
     }
+
+
 
     // Normalize lower part
     for (int j = 1; j <= B; j++){
@@ -118,6 +123,19 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
                 Xhi.element(i, j) = (half) 0.0f;
                 Xlo.element(i, j) = (half) 0.0f;
             }
+        }
+    }
+
+    for (int j = 1; j <= B; j++){ 
+        // If all number are zero, skip
+        if (s1.element(j) == 0.0f){
+            continue;
+        }
+
+        for (int i = 1; i <= N; i++) {
+            printf("%f \n", (float)Xhi.element(i, j));
+            // Using Xtemp to store the residual
+
         }
     }
 

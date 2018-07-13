@@ -1,3 +1,6 @@
+#ifndef FFT_CHECK_CUDA_ERROR_H
+#define FFT_CHECK_CUDA_ERROR_H
+
 #ifdef __DRIVER_TYPES_H__
 #ifndef DEVICE_RESET
 #define DEVICE_RESET cudaDeviceReset();
@@ -25,3 +28,5 @@ void check(T result, char const *const func, const char *const file, int const l
 // This will output the proper CUDA error strings in the event that a CUDA host call returns an error
 #define checkCudaErrors(val)       check ( (val), #val, __FILE__, __LINE__ )
 #endif
+
+#endif /* FFT_CHECK_CUDA_ERROR_H */

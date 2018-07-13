@@ -23,7 +23,7 @@
 #include "../helper/my_const.h"
 
 // Other utilities
-#include "fp32_to_fp16.h"
+#include "debug_fp32_to_fp16.h"
 #include "fourier_matrix_4.h"
 
 // CUDA helper: to check error
@@ -125,6 +125,22 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         return FFT_FAILURE;
     }
 
+    printf("X_before_split:\n");
+    for (int j = 1; j <= B; j++){
+        printf("Vector no. %d:\n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("FX[%d] = (%f, %f)\n", i, X_re.element(i, j),X_im.element(i, j));
+        }
+    }
+
+    printf("X_split:\n");
+    for (int j = 1; j <= B; j++){
+        printf("Vector no. %d:\n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("FX[%d] = (%f, %f, %f, %f)\n", i, (float)X_re_hi.element(i, j), (float)X_re_lo.element(i, j), (float)X_im_hi.element(i, j), (float)X_im_lo.element(i, j));
+        }
+    }
+
     
     // Call cublas function and finish Matrix multiplication calculation
     //// Call cublas gemm on F4_re
@@ -142,6 +158,8 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
         return FFT_FAILURE;
     }
+
+
 
 
     // Scale, combine and get result, add to output
@@ -212,6 +230,13 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         }
     }
 
+    printf("fft4 output:\n");
+    for (int j = 1; j <= B; j++){
+        printf("Vector no. %d:\n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("FX[%d] = (%.3f, %.3f)\n", i, FX_re.element(i,j), FX_im.element(i,j));
+        }
+    }
 
     // Deallocate unified memory
     if (cudaFree(scales) != cudaSuccess) {
