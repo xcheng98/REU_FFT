@@ -22,10 +22,10 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
         }
         
         // If all number are zero, skip
-	if (scale1 == 0.0f){
+	   if (scale1 == 0.0f){
             s1.element(j) = 0.0f;
             continue;
-	}
+	   }
 
         // Restrict scale range
         if (scale1 < EPS){

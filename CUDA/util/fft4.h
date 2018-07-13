@@ -230,93 +230,16 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         return FFT_FAILURE;
     }
 
+    // Shutdown cublas
+    status = cublasDestroy(handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! shutdown error (A)\n");
+        return FFT_FAILURE;
+    }
+
+    cudaDeviceSynchronize();
+
     return FFT_SUCCESS;
-}
-
-int main()
-{
-    int mem_size;
-
-    // Allocate unified memory for Fourier Matrix
-    F4_re.width = 4;
-    F4_re.height = 4;
-    mem_size = F4_re.width * F4_re.height * sizeof(half);
-    checkCudaErrors(cudaMallocManaged((void **) &(F4_re.array), mem_size));
-    F4_im.width = 4;
-    F4_im.height = 4;
-    mem_size = F4_im.width * F4_im.height * sizeof(half);
-    checkCudaErrors(cudaMallocManaged((void **) &(F4_im.array), mem_size));
-
-    FFT_S status;
-    status = init_F4();
-    if (status != FFT_SUCCESS){
-        printf("Error in Fourier matrix initialization\n");
-        exit(1);
-    }
-
-    fft::MatrixF X_re;
-    X_re.height = 4;
-    X_re.width = BATCH;
-    mem_size = X_re.height * X_re.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(X_re.array), mem_size));
-
-    fft::MatrixF X_im;
-    X_im.height = 4;
-    X_im.width = BATCH;
-    mem_size = X_im.height * X_im.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(X_im.array), mem_size));
-
-    fft::MatrixF FX_re;
-    FX_re.height = 4;
-    FX_re.width = BATCH;
-    mem_size = FX_re.height * FX_re.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(FX_re.array), mem_size));
-
-    fft::MatrixF FX_im;
-    FX_im.height = 4;
-    FX_im.width = BATCH;
-    mem_size = FX_im.height * FX_im.width * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &(FX_im.array), mem_size));
-
-    cudaDeviceSynchronize();
-
-    // Setting input value
-    srand(time(NULL));
-    printf("The input is: \n");
-    for (int j = 1; j <= BATCH; j++){
-        printf("Vector %d: \n", j);
-        for (int i = 1; i <= 4; i++){
-            X_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            X_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            printf("X[%d] = (%.10f, %.10f) \n", i, X_re.element(i, j), X_im.element(i, j));
-        }
-    }
-
-    status = fft4(BATCH, X_re, X_im, FX_re, FX_im);
-    if (status != FFT_SUCCESS){
-        printf("Error in running fft calculation\n");
-        exit(1);
-    }
-
-    cudaDeviceSynchronize();
-
-    printf("Result: \n");
-    for (int j = 1; j <= BATCH; j++){
-        printf("Resulting vector %d: \n", j);
-        for (int i = 1; i <= 4; i++){
-            printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
-        }
-    }
-
-    checkCudaErrors(cudaFree(F4_re.array));
-    checkCudaErrors(cudaFree(F4_im.array));
-
-    checkCudaErrors(cudaFree(X_re.array));
-    checkCudaErrors(cudaFree(X_im.array));
-    checkCudaErrors(cudaFree(FX_re.array));
-    checkCudaErrors(cudaFree(FX_im.array));
-
-    return 0;
 }
 
 #endif /* FFT_FFT4_H */

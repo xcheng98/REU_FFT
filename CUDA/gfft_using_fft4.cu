@@ -31,31 +31,64 @@
 // CUDA helper: to check error
 #include "nvidia_helper/checkCudaErrors.h"
 
+#define PI 3.14159265
+
 const float UPPER_BOUND = 1.0f;
 const int BATCH = 1;
 const int SIZE = 16;
 
 extern fft::MatrixH F4_re;
 extern fft::MatrixH F4_im;
+float* buffer;
 
-FFT_S gfft(int N, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
+__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im)
 {
-    
+    /* 
+     * Multifly every element of the input matrix with twiddle factor
+     * Block and thread layout should be 2D
+     * Re.element(i, j) [0 based] = xre * cos(2pi/N * i * j) + xim * sin(2pi/N * i * j)
+     * Im.element(i, j) [0 based] = -xre * sin(2pi/N * i * j) + xim * cos(2pi/N * i * j)
+     * */
+
+    // Calculate position (0 based)
+    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int i = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (i < m && j < n){
+        // Per-thread local variables
+        int index = j * m + i;
+        float tw_re = cos(2 * PI / N * i * j);
+        float tw_im = sin(2 * PI / N * i * j);
+        float result_re = matrix_re[index] * tw_re + matrix_im[index] * tw_im;
+        float result_im = -1.0f * matrix_re[index] * tw_im + matrix_im[index] * tw_re;
+
+        matrix_re[index] = result_re;
+        matrix_im[index] = result_im;
+    }
+
+}
+
+FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& FX_re, fft::MatrixF& FX_im) 
+{
+    FFT_S fft_status;
+
+    fft_status = init_F4();
+    if (fft_status != FFT_SUCCESS){
+        fprintf(stderr, "!!!!! Matrix initialization error (init Fourier matrix).\n");
+        return FFT_FAILURE;
+    }
+
     if (N == 4) {
         return fft4(B, X_re, X_im, FX_re, FX_im);
     }
 
-
-    // Variable declaration
+    // cublas variable declaration
     cublasStatus_t status;
     cublasHandle_t handle;
-
-    //// Unified variables
-    float *scales; // = *re_s1, *re_s2, *im_s1, *im_s2;
-    half *X_split; // = *X_re_hi, *X_re_lo, *X_im_hi, *X_im_lo;
-    float *result1, *result2; // Store the intermediate result
-    //// Scaling variables
+    // Scaling variables
     float alpha = 1.0f, beta = 0.0f; 
+    // Temporary variables for intermediate result swapping
+    float* temp;
 
     // Initialize cublas
     status = cublasCreate(&handle);
@@ -64,181 +97,124 @@ FFT_S gfft(int N, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_r
         return FFT_FAILURE;
     }
 
-    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS setting math mode error\n");
-        return FFT_FAILURE;
+    // Transpose input matrix (N -(Reshape)-> 4*(N/4) -(Transpose)-> (N/4)*4) * B
+    // Store temporary result first in buffer, then in FX_re.array and FX_im.array
+    //// Real matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, X_re.array + j * N, 4, 
+                            &beta, X_re.array + j * N, 4, buffer + j * N, N/4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (transpose real input).\n");
+            return FFT_FAILURE;
+        }
     }
+    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
+    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
+
+    //// Imaginary matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, X_im.array + j * N, 4, 
+                            &beta, X_im.array + j * N, 4, buffer + j * N, N/4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (transpose imaginary input).\n");
+            return FFT_FAILURE;
+        }
+    }
+    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
+    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
+
+    cudaDeviceSynchronize();
 
 
-    //  Allocate unified memory with 0 initialization
-    checkCudaErrors(cudaMallocManaged((void **) &scales, B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMemset(scales, 0.0f, B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **) &X_split, 4 * B * 4 * sizeof(half)));
-    checkCudaErrors(cudaMemset(X_split, 0.0f, 4 * B * 4 * sizeof(half)));
-    checkCudaErrors(cudaMallocManaged((void **) &result1, 4 * B * 4 * sizeof(result1[0])));
-    checkCudaErrors(cudaMemset(result1, 0.0f, 4 * B * 4 * sizeof(result1[0])));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * 4 * sizeof(result2[0])));
-    checkCudaErrors(cudaMemset(result2, 0.0f, 4 * 4 * sizeof(result2[0])));
-
-    // Split input
-    //// Initialize Matrix and Vector data structure to store split result
-    fft::MatrixH X_re_hi;
-    X_re_hi.width = B;
-    X_re_hi.height = 4;
-    X_re_hi.array = X_split + 4 * B * 0;
-
-    fft::MatrixH X_re_lo;
-    X_re_lo.width = B;
-    X_re_lo.height = 4;
-    X_re_lo.array = X_split + 4 * B * 1;
-
-    fft::MatrixH X_im_hi;
-    X_im_hi.width = B;
-    X_im_hi.height = 4;
-    X_im_hi.array = X_split + 4 * B * 2;
-
-    fft::MatrixH X_im_lo;
-    X_im_lo.width = B;
-    X_im_lo.height = 4;
-    X_im_lo.array = X_split + 4 * B * 3;
-
-    fft::VectorF re_s1;
-    re_s1.size = B;
-    re_s1.array = scales + B * 0;
-
-    fft::VectorF re_s2;
-    re_s2.size = B;
-    re_s2.array = scales + B * 1;
-
-    fft::VectorF im_s1;
-    im_s1.size = B;
-    im_s1.array = scales + B * 2;
-
-    fft::VectorF im_s2;
-    im_s2.size = B;
-    im_s2.array = scales + B * 3;
-
-    //// Call splitting function
-    FFT_S fft_status;
-
-    fft_status = split_32_to_16(X_re, X_re_hi, X_re_lo, re_s1, re_s2, 4, B);
+    // Recursively call gfft function
+    fft_status = gfft(N / 4, 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
-        fprintf(stderr, "!!!!! Data splitting error (split X_re).\n");
+        fprintf(stderr, "!!!!! Execution error (recursively call gfft).\n");
         return FFT_FAILURE;
     }
 
-    fft_status = split_32_to_16(X_im, X_im_hi, X_im_lo, im_s1, im_s2, 4, B);
+    // Multiplication with twiddle factors
+    //// Set grid and block size
+    dim3 threadsPerBlock(4, 16);
+    dim3 numBlocks(1, (N + 63)/64); // Make sure blocks are enough
+
+    //// Call kernel function
+    for (int j = 0; j < B; j++){
+        multiply_twiddle<<<numBlocks, threadsPerBlock>>>(N, N/4, 4, FX_re + j * N, FX_im + j * N);
+    }
+
+    cudaDeviceSynchronize();
+
+
+    // Transpose the matrix again
+    // Store temporary result first in buffer, then in FX_re.array and FX_im.array
+    //// Real matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, 4, N/4, &alpha, FX_re.array + j * N, N/4, 
+                            &beta, FX_re.array + j * N, N/4, buffer + j * N, 4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (intermediate transpose real).\n");
+            return FFT_FAILURE;
+        }
+    }
+    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
+    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
+
+    //// Imaginary matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, 4, N/4, &alpha, FX_im.array + j * N, N/4, 
+                            &beta, FX_im.array + j * N, N/4, buffer + j * N, 4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (intermediate transpose imaginary).\n");
+            return FFT_FAILURE;
+        }
+    }
+    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
+    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
+
+    cudaDeviceSynchronize();
+
+
+    // Call fft4
+    fft_status = fft4(N / 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
-        fprintf(stderr, "!!!!! Data splitting error (split X_im).\n");
+        fprintf(stderr, "!!!!! Execution error (combine step calling fft4).\n");
         return FFT_FAILURE;
     }
 
-    
-    // Call cublas function and finish Matrix multiplication calculation
-    //// Call cublas gemm on F4_re
-    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_re.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result1, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+
+    // Do the final transpose to get the output
+    //// Real matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, FX_re.array + j * N, 4, 
+                            &beta, FX_re.array + j * N, 4, buffer + j * N, N/4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (final transpose real).\n");
+            return FFT_FAILURE;
+        }
+    }
+    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
+    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
+
+    //// Imaginary matrix
+    for (int j = 0; j < B; j++){
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, FX_im.array + j * N, 4, 
+                            &beta, FX_im.array + j * N, 4, buffer + j * N, N4);
+        if (status != CUBLAS_STATUS_SUCCESS) {
+            fprintf(stderr, "!!!! CUBLAS kernel execution error (final transpose imaginary).\n");
+            return FFT_FAILURE;
+        }
+    }
+    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
+    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
+
+    cudaDeviceSynchronize();
+
+
+    // Shutdown cublas
+    status = cublasDestroy(handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
-        return FFT_FAILURE;
-    }
-
-    //// Call cublas gemm on F4_im
-    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_im.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result2, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
-        return FFT_FAILURE;
-    }
-
-
-    // Scale, combine and get result, store in the first quarter and third quarter of result1
-    for (int j = 0; j < B; j++)
-    {
-        //// Scale FM_re * X_re_h and accumulate
-        alpha = re_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 0 + 4 * j, 1, FX_re.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_re * X_re_l and accumulate
-        alpha = re_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 1 + 4 * j, 1, FX_re.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_im_h and accumulate
-        alpha = -1.0f * im_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 2 + 4 * j, 1, FX_re.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_im_l and accumulate
-        alpha = -1.0f * im_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 3 + 4 * j, 1, FX_re.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_re * X_im_h and accumulate
-        alpha = im_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 2 + 4 * j, 1, FX_im.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_re * X_im_l and accumulate
-        alpha = im_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 3 + 4 * j, 1, FX_im.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_re_h and accumulate
-        alpha = re_s1.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 0 + 4 * j, 1, FX_im.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_re_l and accumulate
-        alpha = re_s2.element(j + 1);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 1 + 4 * j, 1, FX_im.array + 4 * j, 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-    }
-
-    // Deallocate unified memory
-    if (cudaFree(scales) != cudaSuccess) {
-        fprintf(stderr, "!!!! unified memory free error (free scales vector)\n");
-        return FFT_FAILURE;
-    }
-
-    if (cudaFree(X_split) != cudaSuccess) {
-        fprintf(stderr, "!!!! unified memory free error (free split result matrix)\n");
-        return FFT_FAILURE;
-    }
-
-    if (cudaFree(result1) != cudaSuccess) {
-        fprintf(stderr, "!!!! unified memory free error (free result 1 Matrix)\n");
-        return FFT_FAILURE;
-    }
-
-    if (cudaFree(result2) != cudaSuccess) {
-        fprintf(stderr, "!!!! unified memory free error (free result 2 Matrix)\n");
+        fprintf(stderr, "!!!! shutdown error (A)\n");
         return FFT_FAILURE;
     }
 
@@ -286,14 +262,16 @@ int main()
     mem_size = output_im.width * output_im.height * sizeof(float);
     checkCudaErrors(cudaMallocManaged((void **) &(output_im.array), mem_size));
 
+    // allocate unified memory for the buffer (array of float)
+    mem_size = SIZE * BATCH * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &buffer, mem_size));
+
 
     status = gfft(SIZE, BATCH, input_re, input_im, output_re, output_im);
     if (status != FFT_SUCCESS){
         printf("Error in running fft algorithm\n");
         exit(1);
     }
-
-    cudaDeviceSynchronize();
 
     printf("Result: \n");
     for (int j = 1; j <= BATCH; j++){
