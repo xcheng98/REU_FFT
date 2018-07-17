@@ -26,20 +26,22 @@
 #include "helper/my_const.h"
 
 // Utility programs
-#include "util/fp32_to_fp16.h"
+#include "util/debug_fp32_to_fp16.h"
 #include "util/fourier_matrix_4.h"
-#include "util/fft4.h"
+#include "util/debug_fft4.h"
 
 #define PI 3.14159265
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 4;
-const int SIZE = 256;
+const int BATCH = 1;
+const int SIZE = 64;
 
 extern fft::MatrixH F4_re;
 extern fft::MatrixH F4_im;
 
 float* buffer;
+fft::MatrixF buffer_m1;
+fft::MatrixF buffer_m2;
 
 __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im)
 {
@@ -72,6 +74,15 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 {
     FFT_S fft_status;
 
+    printf("_____calling gfft______: \n N=%d, B=%d\n", N, B);
+    printf("Input matrix: [%d * %d]\n", X_re.height, X_re.width);
+    for (int j = 1; j <= B; j++){
+        printf("Input vector %d: \n", j);
+        for (int i = 1; i <= N; i++){
+            printf("X[%d] = (%.10f, %.10f) \n", i, X_re.element(i, j), X_im.element(i, j));
+        }
+    }
+
     if (N == 4) {
         return fft4(B, X_re, X_im, FX_re, FX_im);
     }
@@ -83,6 +94,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     float alpha = 1.0f, beta = 0.0f; 
     // Temporary variables for intermediate result swapping
     float* temp;
+    int temp_int;
 
     // Initialize cublas
     status = cublasCreate(&handle);
@@ -92,9 +104,9 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     }
 
 
-    // Reshape the output matrix: (N -(Reshape)->4*(N/4)) * B
-    FX_re.width = N / 4 * B; FX_re.height = 4;
-    FX_im.width = N / 4 * B; FX_im.height = 4;
+    // Reshape input and output matrix: (N -(Reshape)->4*(N/4)) * B
+    FX_re.width = FX_re.width * N / 4; FX_re.height = 4;
+    FX_im.width = FX_im.width * N / 4; FX_im.height = 4;
 
 
     // Transpose input matrix: (4*(N/4) -(Transpose)-> (N/4)*4) * B
@@ -110,7 +122,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     }
     ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
     temp = FX_re.array; FX_re.array = buffer; buffer = temp;
-    ////// Set dimension (Note that the transpose happens batch-wisely)
+    ////// Set dimension
     FX_re.height = N / 4; FX_re.width = B * 4;
 
     //// Imaginary 
@@ -126,17 +138,26 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     temp = FX_im.array; FX_im.array = buffer; buffer = temp;
     ////// Set dimension
     FX_im.height = N / 4; FX_im.width = B * 4;
-
+ 
     cudaDeviceSynchronize();
 
 
-    // Recursively call gfft function, not! using buffer matrix
+    // Recursively call gfft function, using buffer matrix
     //// Call gfft, store result in buffer matrix
     fft_status = gfft(N / 4, 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Execution error (recursively call gfft).\n");
         return FFT_FAILURE;
     }
+
+    printf("_____After recursive calling______: \n");
+    for (int j = 1; j <= B * 4; j++){
+        printf("Resulting vector %d: \n", j);
+        for (int i = 1; i <= N / 4; i++){
+            printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
+        }
+    }
+
 
     // Multiplication with twiddle factors
     //// Set grid and block size
@@ -149,6 +170,14 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     }
 
     cudaDeviceSynchronize();
+
+    printf("_____After multiplication and combination______: \n");
+    for (int j = 1; j <= B * 4; j++){
+        printf("Resulting vector %d: \n", j);
+        for (int i = 1; i <= N / 4; i++){
+            printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
+        }
+    }
 
 
     // Transpose the matrix again
@@ -164,7 +193,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     }
     ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
     temp = FX_re.array; FX_re.array = buffer; buffer = temp;
-    ////// Set dimension, note that the transpose happens per batch
+    ////// Set dimension
     FX_re.height = 4; FX_re.width = N / 4 * B;
 
     //// Imaginary matrix
@@ -184,13 +213,30 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     cudaDeviceSynchronize();
 
 
-    // Call fft4, not! using buffer matrix
+    // Call fft4 using buffer matrix
+    //// Set buffer matrix dimension
+    printf("_____Before final fft4______: \n");
+    for (int j = 1; j <= N / 4 * B; j++){
+        printf("Resulting vector %d: \n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
+        }
+    }
     //// Call fft4, store result in buffer matrix
     fft_status = fft4(N / 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Execution error (combine step calling fft4).\n");
         return FFT_FAILURE;
     }
+
+    printf("_____After final fft4______: \n");
+    for (int j = 1; j <= N / 4 * B; j++){
+        printf("Resulting vector %d: \n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("FX[%d] = (%.10f, %.10f) \n", i, FX_re.element(i, j), FX_im.element(i, j));
+        }
+    }
+
 
     // Do the final transpose to get the output
     //// Real matrix
@@ -219,7 +265,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
     temp = FX_im.array; FX_im.array = buffer; buffer = temp;
     ////// Set dimension
-    FX_re.height = N / 4; FX_re.width = 4 * B;
+    FX_im.height = N / 4; FX_im.width = 4 * B;
 
     cudaDeviceSynchronize();
 
@@ -263,7 +309,7 @@ int main()
         for (int i = 1; i <= SIZE; i++){
             input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_re.element(i, j) = (float) i;
+            input_re.element(i, j) = (float) 1;
             input_im.element(i, j) = (float) 0.0f;
             printf("X[%d] = (%.10f, %.10f) \n", i, input_re.element(i, j), input_im.element(i, j));
         }
@@ -282,9 +328,17 @@ int main()
     mem_size = output_im.width * output_im.height * sizeof(float);
     checkCudaErrors(cudaMallocManaged((void **) &(output_im.array), mem_size));
 
-    // allocate unified memory for the buffer (array of float)
+    // allocate unified memory for the buffer (array of float), and buffer matrix
     mem_size = SIZE * BATCH * sizeof(float);
     checkCudaErrors(cudaMallocManaged((void **) &buffer, mem_size));
+    buffer_m1.width = BATCH;
+    buffer_m1.height = SIZE;
+    mem_size = buffer_m1.width * buffer_m1.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(buffer_m1.array), mem_size));
+    buffer_m2.width = BATCH;
+    buffer_m2.height = SIZE;
+    mem_size = buffer_m2.width * buffer_m2.height * sizeof(float);
+    checkCudaErrors(cudaMallocManaged((void **) &(buffer_m2.array), mem_size));
 
 
     FFT_S status;

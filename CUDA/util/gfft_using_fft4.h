@@ -6,35 +6,10 @@
  * Base case is fft4
  */
 
-// C includes
-#include <stdio.h>
-#include <assert.h>
-#include <math.h>
-#include <stdlib.h>
-#include <string.h>
+#ifndef FFT_GFFT_USING_FFT4_H
+#define FFT_GFFT_USING_FFT4_H 
 
-// CUDA includes
-#include <cuda_runtime.h>
-#include <cublas_v2.h>
-#include <cuda_fp16.h>
-
-#include "nvidia_helper/checkCudaErrors.h"
-
-// Matrix and vector
-#include "helper/my_vector.h"
-#include "helper/my_matrix.h"
-#include "helper/my_const.h"
-
-// Utility programs
-#include "util/fp32_to_fp16.h"
-#include "util/fourier_matrix_4.h"
-#include "util/fft4.h"
-
-#define PI 3.14159265
-
-const float UPPER_BOUND = 1.0f;
-const int BATCH = 4;
-const int SIZE = 256;
+#include "my_include.h"
 
 extern fft::MatrixH F4_re;
 extern fft::MatrixH F4_im;
@@ -68,7 +43,7 @@ __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* m
 
 }
 
-FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& FX_re, fft::MatrixF& FX_im) 
+FFT_S gfft_recursion(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& FX_re, fft::MatrixF& FX_im) 
 {
     FFT_S fft_status;
 
@@ -132,7 +107,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 
     // Recursively call gfft function, not! using buffer matrix
     //// Call gfft, store result in buffer matrix
-    fft_status = gfft(N / 4, 4 * B, FX_re, FX_im, FX_re, FX_im);
+    fft_status = gfft_recursion(N / 4, 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Execution error (recursively call gfft).\n");
         return FFT_FAILURE;
@@ -239,7 +214,7 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     return FFT_SUCCESS;
 }
 
-int main()
+FFT_S gfft(int SIZE, int BATCH, float* X_re, float* X_im, float* FX_re, float* FX_im) 
 {
     int mem_size;
 
@@ -255,20 +230,9 @@ int main()
     mem_size = input_im.width * input_im.height * sizeof(float);
     checkCudaErrors(cudaMallocManaged((void **) &(input_im.array), mem_size));
 
-    // Initialize the input matrix
-    srand(time(NULL));
-    printf("The input is: \n");
-    for (int j = 1; j <= BATCH; j++){
-        printf("Vector %d: \n", j);
-        for (int i = 1; i <= SIZE; i++){
-            input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_re.element(i, j) = (float) i;
-            input_im.element(i, j) = (float) 0.0f;
-            printf("X[%d] = (%.10f, %.10f) \n", i, input_re.element(i, j), input_im.element(i, j));
-        }
-        printf("\n");
-    }
+    // Copy input matrix from function parameter
+    memcpy(input_re.array, (void*)X_re, SIZE * BATCH * sizeof(float));
+    memcpy(input_im.array, (void*)X_im, SIZE * BATCH * sizeof(float));
     
     // allocate unified memory for output matrix
     fft::MatrixF output_re;
@@ -294,25 +258,27 @@ int main()
         fprintf(stderr, "!!!!! Matrix initialization error (init Fourier matrix).\n");
         return FFT_FAILURE;
     }
+
     // Call gfft function
-    status = gfft(SIZE, BATCH, input_re, input_im, output_re, output_im);
+    status = gfft_recursion(SIZE, BATCH, input_re, input_im, output_re, output_im);
     if (status != FFT_SUCCESS){
         printf("Error in running fft algorithm\n");
-        exit(1);
+        return FFT_FAILURE;
     }
 
-    printf("Result: \n");
-    for (int j = 1; j <= BATCH; j++){
-        printf("Resulting vector %d: \n", j);
-        for (int i = 1; i <= SIZE; i++){
-            printf("FX[%d] = (%.10f, %.10f) \n", i, output_re.element(i, j), output_im.element(i, j));
-        }
-    }
-
+    
+    // Copy result to output array
+    memcpy(FX_re, (void*)(output_re.array), SIZE * BATCH * sizeof(float));
+    memcpy(FX_im, (void*)(output_im.array), SIZE * BATCH * sizeof(float));
+   
+ 
     checkCudaErrors(cudaFree(input_re.array));
     checkCudaErrors(cudaFree(input_im.array));
     checkCudaErrors(cudaFree(output_re.array));
     checkCudaErrors(cudaFree(output_im.array));
 
-    return 0;
+    return FFT_SUCCESS;
 }
+
+
+#endif /* FFT_GFFT_USING_FFT4_H */

@@ -33,7 +33,7 @@
 #define PI 3.14159265
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 1;
+const int BATCH = 4;
 const int SIZE = 16;
 
 extern fft::MatrixH F4_re;

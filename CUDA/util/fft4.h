@@ -68,10 +68,6 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * 4 * sizeof(result2[0])));
     checkCudaErrors(cudaMemset(result2, 0.0f, 4 * 4 * sizeof(result2[0])));
 
-    // Make sure output is clean to write (0 initialization)
-    checkCudaErrors(cudaMemset(FX_re.array, 0.0f, 4 * B * sizeof(float)));
-    checkCudaErrors(cudaMemset(FX_im.array, 0.0f, 4 * B * sizeof(float)));
-
     // Split input
     //// Initialize Matrix and Vector data structure to store split result
     fft::MatrixH X_re_hi;
@@ -142,6 +138,11 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
         fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
         return FFT_FAILURE;
     }
+
+
+    // Make sure output is clean to write (0 initialization)
+    checkCudaErrors(cudaMemset(FX_re.array, 0.0f, 4 * B * sizeof(float)));
+    checkCudaErrors(cudaMemset(FX_im.array, 0.0f, 4 * B * sizeof(float)));
 
 
     // Scale, combine and get result, add to output

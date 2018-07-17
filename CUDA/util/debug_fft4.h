@@ -68,10 +68,6 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * 4 * sizeof(result2[0])));
     checkCudaErrors(cudaMemset(result2, 0.0f, 4 * 4 * sizeof(result2[0])));
 
-    // Make sure output is clean to write (0 initialization)
-    checkCudaErrors(cudaMemset(FX_re.array, 0.0f, 4 * B * sizeof(float)));
-    checkCudaErrors(cudaMemset(FX_im.array, 0.0f, 4 * B * sizeof(float)));
-
     // Split input
     //// Initialize Matrix and Vector data structure to store split result
     fft::MatrixH X_re_hi;
@@ -113,6 +109,14 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     //// Call splitting function
     FFT_S fft_status;
 
+    printf("________X_before_split_________:\n");
+    for (int j = 1; j <= B; j++){
+        printf("Vector no. %d:\n", j);
+        for (int i = 1; i <= 4; i++){
+            printf("X[%d] = (%f, %f)\n", i, X_re.element(i, j),X_im.element(i, j));
+        }
+    }
+
     fft_status = split_32_to_16(X_re, X_re_hi, X_re_lo, re_s1, re_s2, 4, B);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Data splitting error (split X_re).\n");
@@ -123,14 +127,6 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Data splitting error (split X_im).\n");
         return FFT_FAILURE;
-    }
-
-    printf("X_before_split:\n");
-    for (int j = 1; j <= B; j++){
-        printf("Vector no. %d:\n", j);
-        for (int i = 1; i <= 4; i++){
-            printf("FX[%d] = (%f, %f)\n", i, X_re.element(i, j),X_im.element(i, j));
-        }
     }
 
     printf("X_split:\n");
@@ -161,6 +157,9 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
 
 
+    // Make sure output is clean to write (0 initialization)
+    checkCudaErrors(cudaMemset(FX_re.array, 0.0f, 4 * B * sizeof(float)));
+    checkCudaErrors(cudaMemset(FX_im.array, 0.0f, 4 * B * sizeof(float)));
 
     // Scale, combine and get result, add to output
     for (int j = 1; j <= B; j++)
