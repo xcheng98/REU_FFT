@@ -1,0 +1,98 @@
+Problem size = 256, batch size = 16, norm = 1.000000
+[Testing of cuFFT FP16] - Starting...
+==11763== NVPROF is profiling process 11763, command: ./test
+==11763== Profiling application: ./test
+==11763== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   92.93%  278.75us         1  278.75us  278.75us  278.75us  [CUDA memcpy HtoD]
+                    4.95%  14.848us         1  14.848us  14.848us  14.848us  void vector_fft<unsigned int=256, unsigned int=1, unsigned int=4, unsigned int=1, unsigned int=1, unsigned int=0, unsigned int=2, unsigned int=1, unsigned int=1, unsigned int=0, unsigned int, __half>(kernel_arguments_t<unsigned int>)
+                    2.12%  6.3680us         1  6.3680us  6.3680us  6.3680us  [CUDA memcpy DtoH]
+      API calls:   61.74%  366.56ms         4  91.641ms  50.755us  366.13ms  cudaFree
+                   37.64%  223.46ms         2  111.73ms  25.594us  223.44ms  cudaMallocManaged
+                    0.25%  1.4707ms       189  7.7810us     252ns  365.73us  cuDeviceGetAttribute
+                    0.11%  670.43us         2  335.22us  95.564us  574.87us  cudaMemcpy
+                    0.09%  524.15us         1  524.15us  524.15us  524.15us  cudaGetDeviceProperties
+                    0.06%  337.31us         1  337.31us  337.31us  337.31us  cudaLaunchKernel
+                    0.05%  306.52us         2  153.26us  138.56us  167.96us  cuDeviceTotalMem
+                    0.04%  222.43us         1  222.43us  222.43us  222.43us  cudaMalloc
+                    0.03%  159.29us         2  79.647us  79.226us  80.068us  cuDeviceGetName
+                    0.00%  11.986us         7  1.7120us     822ns  3.1880us  cudaGetDevice
+                    0.00%  4.0710us         1  4.0710us  4.0710us  4.0710us  cuDeviceGetPCIBusId
+                    0.00%  3.6900us         4     922ns     346ns  1.9800us  cuDeviceGetCount
+                    0.00%  2.1050us         3     701ns     342ns  1.2130us  cuDeviceGet
+                    0.00%  1.2310us         1  1.2310us  1.2310us  1.2310us  cuInit
+                    0.00%  1.1570us         1  1.1570us  1.1570us  1.1570us  cudaGetErrorString
+                    0.00%  1.0550us         1  1.0550us  1.0550us  1.0550us  cuDriverGetVersion
+
+==11763== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       1         -         -         -           -  271.6800us  Gpu page fault groups
+
+-----------------------------------------------------------------------------------------
+
+Problem size = 2048, batch size = 16, norm = 1.000000
+[Testing of cuFFT FP16] - Starting...
+==11812== NVPROF is profiling process 11812, command: ./test -n=2048
+==11812== Profiling application: ./test -n=2048
+==11812== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   52.94%  319.42us         1  319.42us  319.42us  319.42us  [CUDA memcpy HtoD]
+                   41.76%  251.93us         1  251.93us  251.93us  251.93us  void vector_fft<unsigned int=2048, unsigned int=1, unsigned int=4, unsigned int=1, unsigned int=0, unsigned int=0, unsigned int=2, unsigned int=1, unsigned int=1, unsigned int=0, unsigned int, __half>(kernel_arguments_t<unsigned int>)
+                    5.30%  31.999us         1  31.999us  31.999us  31.999us  [CUDA memcpy DtoH]
+      API calls:   61.82%  367.03ms         4  91.757ms  31.218us  366.74ms  cudaFree
+                   37.53%  222.77ms         2  111.39ms  25.574us  222.75ms  cudaMallocManaged
+                    0.23%  1.3933ms       189  7.3720us     206ns  335.50us  cuDeviceGetAttribute
+                    0.17%  1.0073ms         2  503.64us  361.44us  645.83us  cudaMemcpy
+                    0.09%  520.48us         1  520.48us  520.48us  520.48us  cudaGetDeviceProperties
+                    0.05%  283.77us         1  283.77us  283.77us  283.77us  cudaLaunchKernel
+                    0.04%  266.57us         2  133.28us  109.65us  156.92us  cuDeviceTotalMem
+                    0.04%  216.83us         1  216.83us  216.83us  216.83us  cudaMalloc
+                    0.02%  146.99us         2  73.493us  66.504us  80.483us  cuDeviceGetName
+                    0.00%  10.939us         7  1.5620us     889ns  2.5550us  cudaGetDevice
+                    0.00%  3.9270us         1  3.9270us  3.9270us  3.9270us  cuDeviceGetPCIBusId
+                    0.00%  2.4470us         4     611ns     264ns  1.1020us  cuDeviceGetCount
+                    0.00%  1.6470us         3     549ns     231ns     958ns  cuDeviceGet
+                    0.00%  1.3360us         1  1.3360us  1.3360us  1.3360us  cuInit
+                    0.00%  1.2090us         1  1.2090us  1.2090us  1.2090us  cuDriverGetVersion
+                    0.00%     923ns         1     923ns     923ns     923ns  cudaGetErrorString
+
+==11812== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       3         -         -         -           -  421.8560us  Gpu page fault groups
+
+
+-----------------------------------------------------------------------------------------
+
+Problem size = 256, batch size = 256, norm = 1.000000
+[Testing of cuFFT FP16] - Starting...
+==11839== NVPROF is profiling process 11839, command: ./test -batch=256
+==11839== Profiling application: ./test -batch=256
+==11839== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   57.83%  515.67us         1  515.67us  515.67us  515.67us  [CUDA memcpy HtoD]
+                   35.30%  314.72us         1  314.72us  314.72us  314.72us  void vector_fft<unsigned int=256, unsigned int=1, unsigned int=4, unsigned int=1, unsigned int=1, unsigned int=0, unsigned int=2, unsigned int=1, unsigned int=1, unsigned int=0, unsigned int, __half>(kernel_arguments_t<unsigned int>)
+                    6.87%  61.248us         1  61.248us  61.248us  61.248us  [CUDA memcpy DtoH]
+      API calls:   61.64%  366.82ms         4  91.706ms  66.494us  366.37ms  cudaFree
+                   37.63%  223.94ms         2  111.97ms  27.031us  223.91ms  cudaMallocManaged
+                    0.26%  1.5285ms         2  764.24us  605.73us  922.75us  cudaMemcpy
+                    0.21%  1.2780ms       189  6.7610us     188ns  328.83us  cuDeviceGetAttribute
+                    0.09%  521.35us         1  521.35us  521.35us  521.35us  cudaGetDeviceProperties
+                    0.06%  330.08us         1  330.08us  330.08us  330.08us  cudaLaunchKernel
+                    0.04%  258.69us         2  129.34us  110.86us  147.83us  cuDeviceTotalMem
+                    0.04%  216.75us         1  216.75us  216.75us  216.75us  cudaMalloc
+                    0.02%  143.49us         2  71.746us  65.900us  77.593us  cuDeviceGetName
+                    0.00%  16.965us         7  2.4230us     819ns  7.8790us  cudaGetDevice
+                    0.00%  5.1730us         1  5.1730us  5.1730us  5.1730us  cuDeviceGetPCIBusId
+                    0.00%  2.4010us         4     600ns     251ns  1.0760us  cuDeviceGetCount
+                    0.00%  1.5650us         3     521ns     227ns     874ns  cuDeviceGet
+                    0.00%  1.2630us         1  1.2630us  1.2630us  1.2630us  cudaGetErrorString
+                    0.00%  1.1000us         1  1.1000us  1.1000us  1.1000us  cuDriverGetVersion
+                    0.00%  1.0580us         1  1.0580us  1.0580us  1.0580us  cuInit
+
+==11839== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       4         -         -         -           -  677.7600us  Gpu page fault groups
+

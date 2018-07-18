@@ -33,7 +33,7 @@
 #define PI 3.14159265
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 4;
+const int BATCH = 1;
 const int SIZE = 256;
 
 extern fft::MatrixH F4_re;
@@ -263,8 +263,6 @@ int main()
         for (int i = 1; i <= SIZE; i++){
             input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_re.element(i, j) = (float) i;
-            input_im.element(i, j) = (float) 0.0f;
             printf("X[%d] = (%.10f, %.10f) \n", i, input_re.element(i, j), input_im.element(i, j));
         }
         printf("\n");
