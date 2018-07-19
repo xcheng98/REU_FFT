@@ -39,6 +39,8 @@ FFT_S split_32_to_16(fft::MatrixF X, fft::MatrixH Xhi, fft::MatrixH Xlo, fft::Ve
 
 FFT_S init_F4();
 
+__global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R1, float* R2, int B);
+
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im);
 
 __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im);
@@ -50,8 +52,6 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 fft::MatrixH F4_re;
 fft::MatrixH F4_im;
 float* buffer;
-
-
 
 
 int main()
@@ -78,6 +78,8 @@ int main()
         for (int i = 1; i <= SIZE; i++){
             input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
+            input_re.element(i, j) = (float)i;
+            input_im.element(i, j) = 0.0f;
             printf("X[%d] = (%.10f, %.10f) \n", i, input_re.element(i, j), input_im.element(i, j));
         }
         printf("\n");
@@ -297,6 +299,31 @@ FFT_S init_F4()
 }
 
 
+__global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R1, float* R2, int B)
+{
+    /* 
+     * N is number of elements (always 4)
+     * X1, X2 are 4 * (B * 4) column-major matrix. Inner order is by batch. Outer order is Re_hi, Re_lo, Im_hi, Im_lo
+     * alpha is B * 4 array. Inner order is by batch. Outer order is re_s1, re_s2, im_s1, im_s2
+     * R1, R2 are 4 * B matrix
+     * B is batch size
+     * */
+    int i = blockIdx.y * blockDim.y + threadIdx.y; // row number
+    int j = blockIdx.x * blockDim.x + threadIdx.x; // column number
+
+    if (i < N && j < B){
+        R1[i + j * N] += alpha[j] * X1[i + j * N];
+        R1[i + j * N] += alpha[j + B] * X1[i + j * N + N * B];
+        R1[i + j * N] += -1.0f * alpha[j + 2*B] * X2[i + j * N + N * 2 * B];
+        R1[i + j * N] += -1.0f * alpha[j + 3*B] * X2[i + j * N + N * 3 * B];
+        R2[i + j * N] += alpha[j] * X2[i + j * N];
+        R2[i + j * N] += alpha[j + B] * X2[i + j * N + N * B];
+        R2[i + j * N] += alpha[j + 2*B] * X1[i + j * N + N * 2 * B];
+        R2[i + j * N] += alpha[j + 3*B] * X1[i + j * N + N * 3 * B];
+    }
+}
+
+
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
 {
     // Variable declaration
@@ -411,72 +438,12 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 
 
     // Scale, combine and get result, add to output
-    for (int j = 1; j <= B; j++)
-    {
-        //// Scale FM_re * X_re_h and accumulate
-        alpha = re_s1.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 0 + 4 * (j - 1), 1, (float*)&(FX_re.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
+    //// Set grid and block size
+    dim3 threadsPerBlock(16, 4);
+    dim3 numBlocks((B+15)/16, 1);
 
-        //// Scale FM_re * X_re_l and accumulate
-        alpha = re_s2.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 1 + 4 * (j - 1), 1, (float*)&(FX_re.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_re_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_im_h and accumulate
-        alpha = -1.0f * im_s1.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 2 + 4 * (j - 1), 1, (float*)&(FX_re.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_im_l and accumulate
-        alpha = -1.0f * im_s2.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 3 + 4 * (j - 1), 1, (float*)&(FX_re.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_im_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_re * X_im_h and accumulate
-        alpha = im_s1.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 2 + 4 * (j - 1), 1, (float*)&(FX_im.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_re * X_im_l and accumulate
-        alpha = im_s2.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result1 + 4 * B * 3 + 4 * (j - 1), 1, (float*)&(FX_im.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_re * X_im_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_re_h and accumulate
-        alpha = re_s1.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 0 + 4 * (j - 1), 1, (float*)&(FX_im.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_h and accumulate).\n");
-            return FFT_FAILURE;
-        }
-
-        //// Scale FM_im * X_re_l and accumulate
-        alpha = re_s2.element(j);
-        status = cublasSaxpy(handle, 4, &alpha, result2 + 4 * B * 1 + 4 * (j - 1), 1, (float*)&(FX_im.element(1, j)), 1);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (Scale FM_im * X_re_l and accumulate).\n");
-            return FFT_FAILURE;
-        }
-    }
+    //// Call kernel function
+    myAccumulate<<<numBlocks, threadsPerBlock>>>(4, result1, result2, scales, FX_re.array, FX_im.array, B);
 
 
     // Deallocate unified memory
