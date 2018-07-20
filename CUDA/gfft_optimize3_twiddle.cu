@@ -35,7 +35,7 @@ const int SIZE = 256;
 
 
 // Utility function declaration
-__global__ void mySplit(float* X, half* Xhi, half* Xlo, float* s1, float* s2, int N, int B);
+__global__ void mySplit(float* X, half* Xhi, half* Xlo, float* s1, float* s2, int N, int B, float* Xtemp);
 
 FFT_S init_F4();
 
@@ -43,7 +43,7 @@ __global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R
 
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im);
 
-__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im);
+__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im, int B);
 
 FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& FX_re, fft::MatrixF& FX_im);
 
@@ -435,22 +435,24 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
 }
 
 
-__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im)
+__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im, int B)
 {
     /* 
      * Multifly every element of the input matrix with twiddle factor
+     * Every matrix in a batch is scaled independently
      * Block and thread layout should be 2D
      * Re.element(i, j) [0 based] = xre * cos(2pi/N * i * j) + xim * sin(2pi/N * i * j)
      * Im.element(i, j) [0 based] = -xre * sin(2pi/N * i * j) + xim * cos(2pi/N * i * j)
      * */
 
     // Calculate position (0 based)
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
+    int j = threadIdx.x; // 0 to 3 in radix 4
     int i = blockIdx.y * blockDim.y + threadIdx.y;
+    int matrix_id = blockIdx.x;
 
-    if (i < m && j < n){
+    if (i < m && j < n && matrix_id < B){
         // Per-thread local variables
-        int index = j * m + i;
+        int index = matrix_id * N + j * m + i;
         float tw_re = cos(2 * PI / N * i * j);
         float tw_im = sin(2 * PI / N * i * j);
         float result_re = matrix_re[index] * tw_re + matrix_im[index] * tw_im;
@@ -535,12 +537,10 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     // Multiplication with twiddle factors
     //// Set grid and block size
     dim3 threadsPerBlock(4, 16);
-    dim3 numBlocks(1, (N + 63)/64); // Make sure blocks are enough
+    dim3 numBlocks(B, (N + 63)/64); // Make sure blocks are enough
 
     //// Call kernel function
-    for (int j = 0; j < B; j++){
-        multiply_twiddle<<<numBlocks, threadsPerBlock>>>(N, N/4, 4, FX_re.array + j * N, FX_im.array + j * N);
-    }
+    multiply_twiddle<<<numBlocks, threadsPerBlock>>>(N, N/4, 4, FX_re.array, FX_im.array, B);
 
     cudaDeviceSynchronize();
 
