@@ -43,7 +43,11 @@ __global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R
 
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im);
 
-FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im)
+__global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, float* s2, int n, int M, int B, float* Xtemp);
+
+__global__ void myAccumulate_transposed(float* X1, float* X2, float* alpha, float* R1, float* R2, int n, int M, int B);
+
+FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im);
 
 __global__ void myTranspose(int m, int n, float* input, float* output, int B);
 
@@ -703,34 +707,41 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
   
  
     // Call cublas function and finish Matrix multiplication calculation
-    //// Call cublas gemm on F4_re
-    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_re.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result1, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+    // The order of multiplicands are reversed
+    //// Define batched offset
+    long long int offset_h = M * 4 * sizeof(half);
+    long long int offset_f = M * 4 * sizeof(float);
+    long long int offset_zero = 0;
+
+    //// Call cublas batched gemm on F4_re
+
+    status = cublasGemmStridedBatchedEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, 4, 4, &alpha, X_split,
+                        CUDA_R_16F, M, offset_h, F4_re.array, CUDA_R_16F, 4, offset_zero, &beta, result1, CUDA_R_32F, M, offset_f, B, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
+        fprintf(stderr, "!!!! CUBLAS kernel execution error in fft4_transposed ((c, d) * a).\n");
         return FFT_FAILURE;
     }
 
     //// Call cublas gemm on F4_im
-    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_im.array,
-                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result2, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+    status = cublasGemmStridedBatchedEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, 4, 4, &alpha, X_split,
+                        CUDA_R_16F, M, offset_h, F4_im.array, CUDA_R_16F, 4, offset_zero, &beta, result2, CUDA_R_32F, M, offset_f, B, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
+        fprintf(stderr, "!!!! CUBLAS kernel execution error in fft4_transposed ((c, d) * b).\n");
         return FFT_FAILURE;
     }
 
 
     // Scale, combine and get result, add to output
     //// Set grid and block size
-    dim3 threadsPerBlock(16, 4);
-    dim3 BlocksPerGrid((B+15)/16, 1);
+    dim3 threadsPerBlock2(16, 16);
+    dim3 BlocksPerGrid2((4 * B + 15)/16, (M + 15)/16);
 
     //// call kernel function (buffer is zero-initialized inside)
-    myAccumulate<<<BlocksPerGrid, threadsPerBlock>>>(4, result1, result2, scales, FX_re.array, FX_im.array, B);
+    myAccumulate_transposed<<<BlocksPerGrid2, threadsPerBlock2>>>(result1, result2, scales, FX_re.array, FX_im.array, 4, M, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
-        printf("CUDA error: %s during accumulation\n", cudaGetErrorString(cerror));
+        printf("CUDA error: %s during accumulation in fft4_transposed\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
 
@@ -763,8 +774,6 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
         return FFT_FAILURE;
     }
 
-    cudaDeviceSynchronize();
-
     return FFT_SUCCESS;
 }
 
@@ -772,28 +781,37 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
 __global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, float* s2, int n, int M, int B, float* Xtemp)
 {
  /* 
-  * fft::MatrixF X (N*B), fft::MatrixH Xhi (N*B), fft::MatrixH Xlo (N*B)
-  * fft::VectorF s1, fft::VectorF s2
-  * int N, int B. N is always 4
-  * Grid and dim size should be 1D, total size = B
+  * fft::MatrixF X (M * (n * B)), fft::MatrixH Xhi (M * (n * B)), fft::MatrixH Xlo (M * (n * B))
+  * fft::VectorF s1 of size M * B, fft::VectorF s2 of size M * B
+  * int n, int M, int B. n is expected to be 4, M = N / 4
+  * Grid and dim size should be 2D, total size = M * B
   * All data should be in unified memory or device memory
   * */
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int rowIdx = blockIdx.y * blockDim.y + threadIdx.y; // Row number (max M)
+    int blockIdx = blockIdx.x * blockDim.x + threadIdx.x; // 'Column number' (max B)
 
-    if (idx < B){
+    if (rowIdx < M && blockIdx < B){
+        /* Data to be manipulated:
+        X, Xhi, Xlo (rowIdx, blockIdx * n +0+1+2+3) = X, Xhi, Xlo[rowIdx + blockIdx * n * M + 0/1/2/3 * M]
+        s1, s2 (rowIdx, blockIdx) = s1, s2[rowIdx + blockIdx * M]
+        */
+        int offset = rowIdx + blockIdx * n * M;
+        int stride = M;
+        int factor_idx = rowIdx + blockIdx * M;
+
         // Calculate scaling factor 1
         float scale1 = 0.0f;
-        for (int i = 0; i < N; i++){
-            float norm = (float) fabs(X[i + idx * N]);
+        for (int i = 0; i < n; i++){
+            float norm = (float) fabs(X[offset + i * stride]);
             if (norm > scale1) scale1 = norm;
         }
         
         // If all number are zero, skip
         if (scale1 == 0.0f){
-            s1[idx] = 0.0f;
-            s2[idx] = 0.0f;
-            for (int i = 0; i < N; i++){
-                Xhi[i + idx * N] = Xlo[i + idx * N] = 0.0f;
+            s1[factor_idx] = 0.0f;
+            s2[factor_idx] = 0.0f;
+            for (int i = 0; i < n; i++){
+                Xhi[offset + i * stride] = Xlo[offset + i * stride] = 0.0f;
             }
         }
         else
@@ -801,28 +819,28 @@ __global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, fl
             // Restrict scale range
             if (scale1 < EPS) scale1 = EPS;
             if (scale1 > 1.0f/EPS) scale1 = 1.0f/EPS;
-            s1[idx] = scale1;
+            s1[factor_idx] = scale1;
 
             // Scale the high half
-            for (int i = 0; i < N; i++){
-                Xtemp[i + idx * N] = X[i + idx * N]/scale1;
-                Xhi[i + idx * N] = (half)(Xtemp[i + idx * N]);
+            for (int i = 0; i < n; i++){
+                Xtemp[offset + i * stride] = X[offset + i * stride]/scale1;
+                Xhi[offset + i * stride] = (half)(Xtemp[offset + i * stride]);
                 // Use Xtemp to store the residual
-                Xtemp[i + idx * N] = X[i + idx * N] - scale1 * (float)(Xhi[i + idx * N]);
+                Xtemp[offset + i * stride] = X[offset + i * stride] - scale1 * (float)(Xhi[offset + i * stride]);
             }
 
            // Calculate the lower scaling factor
             float scale2 = 0.0f;
-            for (int i = 0; i < N; i++){
-                float norm = (float) fabs(Xtemp[i + idx * N]);
+            for (int i = 0; i < n; i++){
+                float norm = (float) fabs(Xtemp[offset + i * stride]);
                 if (norm > scale2) scale2 = norm;
             }
         
             // If all number are zero, skip
             if (scale2 == 0.0f){
-                s2[idx] = 0.0f;
-                for (int i = 0; i < N; i++){
-                    Xlo[i + idx * N] = 0.0f;
+                s2[factor_idx] = 0.0f;
+                for (int i = 0; i < n; i++){
+                    Xlo[offset + i * stride] = 0.0f;
                 }
             }
             else
@@ -830,10 +848,10 @@ __global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, fl
                 // Restrict scale range
                 if (scale2 < EPS) scale2 = EPS;
                 if (scale2 > 1.0f/EPS) scale2 = 1.0f/EPS;
-                s2[idx] = scale2;
+                s2[factor_idx] = scale2;
 
-                for (int i = 0; i < N; i++){
-                Xlo[i + idx * N] = (half) (Xtemp[i + idx * N] / scale2);
+                for (int i = 0; i < n; i++){
+                Xlo[offset + i * stride] = (half) (Xtemp[offset + i * stride] / scale2);
                 }
             }
         }
@@ -841,27 +859,32 @@ __global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, fl
 }
 
 
-__global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R1, float* R2, int B)
+__global__ void myAccumulate_transposed(float* X1, float* X2, float* alpha, float* R1, float* R2, int n, int M, int B)
 {
     /* 
-     * N is number of elements in one column (expected to be 4)
-     * X1, X2 are 4 * (B * 4) column-major matrix. Inner order is by batch. Outer order is Re_hi, Re_lo, Im_hi, Im_lo
-     * alpha is B * 4 array. Inner order is by batch. Outer order is re_s1, re_s2, im_s1, im_s2
-     * R1, R2 are 4 * B matrix
-     * B is batch size
+     * X1, X2 are M * (4 * B * 4) matrix. The inner-most column order is by element in a unit. Then by batch. Outer order is Re_hi, Re_lo, Im_hi, Im_lo
+     * alpha is a M * B * 4 array. Inner most order is by rows. Then by batch. Outer order is re_s1, re_s2, im_s1, im_s2
+     * R1, R2 are M * (4 * B) matrix
+     * n is number of elements in one unit (expected to be 4)
+     * M is number of rows, B is batch size
      * */
     int i = blockIdx.y * blockDim.y + threadIdx.y; // row number
     int j = blockIdx.x * blockDim.x + threadIdx.x; // column number
 
-    if (i < N && j < B){
-        R1[i + j * N] = R2[i + j * N] = 0.0f;
-        R1[i + j * N] += alpha[j] * X1[i + j * N];
-        R1[i + j * N] += alpha[j + B] * X1[i + j * N + N * B];
-        R1[i + j * N] += -1.0f * alpha[j + 2*B] * X2[i + j * N + N * 2 * B];
-        R1[i + j * N] += -1.0f * alpha[j + 3*B] * X2[i + j * N + N * 3 * B];
-        R2[i + j * N] += alpha[j] * X2[i + j * N];
-        R2[i + j * N] += alpha[j + B] * X2[i + j * N + N * B];
-        R2[i + j * N] += alpha[j + 2*B] * X1[i + j * N + N * 2 * B];
-        R2[i + j * N] += alpha[j + 3*B] * X1[i + j * N + N * 3 * B];
+    if (i < M && j < 4 * B){
+        int result_idx = i + j * M;
+        int e_stride = M * 4 * B; // Stride for elements, e.g. from Re_hi to Re_lo
+        int factor_idx = i + j / 4 * M;
+        int f_stride = M * B; // Stride for factors, e.g. from re_s1 to re_s2
+        R1[result_idx] = R2[result_idx] = 0.0f;
+
+        R1[result_idx] += alpha[factor_idx] * X1[result_idx];
+        R1[result_idx] += alpha[factor_idx + f_stride] * X1[result_idx + e_stride];
+        R1[result_idx] += -1.0f * alpha[factor_idx + 2*f_stride] * X2[result_idx + 2*e_stride];
+        R1[result_idx] += -1.0f * alpha[factor_idx + 3*f_stride] * X2[result_idx + 3*e_stride];
+        R2[result_idx] += alpha[factor_idx] * X2[result_idx];
+        R2[result_idx] += alpha[factor_idx + f_stride] * X2[result_idx + e_stride];
+        R2[result_idx] += alpha[factor_idx + 2*f_stride] * X1[result_idx + 2*e_stride];
+        R2[result_idx] += alpha[factor_idx + 3*f_stride] * X1[result_idx + 3*e_stride];
     }
 }
