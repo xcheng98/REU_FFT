@@ -330,8 +330,8 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     checkCudaErrors(cudaMemset(X_split, 0.0f, 4 * B * 4 * sizeof(half)));
     checkCudaErrors(cudaMallocManaged((void **) &result1, 4 * B * 4 * sizeof(result1[0])));
     checkCudaErrors(cudaMemset(result1, 0.0f, 4 * B * 4 * sizeof(result1[0])));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * 4 * sizeof(result2[0])));
-    checkCudaErrors(cudaMemset(result2, 0.0f, 4 * 4 * sizeof(result2[0])));
+    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * B * 4 * sizeof(result2[0])));
+    checkCudaErrors(cudaMemset(result2, 0.0f, 4 * B * 4 * sizeof(result2[0])));
 
     // Split input
     //// Initialize Matrix and Vector data structure to store split result

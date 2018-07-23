@@ -43,6 +43,8 @@ __global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R
 
 FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im);
 
+FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im)
+
 __global__ void myTranspose(int m, int n, float* input, float* output, int B);
 
 __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im, int B);
@@ -223,79 +225,14 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 
     cudaDeviceSynchronize();
 
-
-    // Transpose the matrix again
-    // Store temporary result first in buffer, then in FX_re.array and FX_im.array
-    //// Real matrix
-    for (int j = 0; j < B; j++){
-        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, 4, N/4, &alpha, FX_re.array + j * N, N/4, 
-                            &beta, FX_re.array + j * N, N/4, buffer + j * N, 4);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (intermediate transpose real).\n");
-            return FFT_FAILURE;
-        }
-    }
-    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
-    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
-    ////// Set dimension, note that the transpose happens per batch
-    FX_re.height = 4; FX_re.width = N / 4 * B;
-
-    //// Imaginary matrix
-    for (int j = 0; j < B; j++){
-        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, 4, N/4, &alpha, FX_im.array + j * N, N/4, 
-                            &beta, FX_im.array + j * N, N/4, buffer + j * N, 4);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (intermediate transpose imaginary).\n");
-            return FFT_FAILURE;
-        }
-    }
-    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
-    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
-    ////// Set dimension
-    FX_im.height = 4; FX_im.width = N / 4 * B;
-
+    // Using the improved algorithm without transposition
+    fft_status = fft4_transposed(N / 4, B, FX_re, FX_im, FX_re, FX_im);
     cudaDeviceSynchronize();
 
-
-    // Call fft4, not! using buffer matrix
-    //// Call fft4, store result in buffer matrix
-    fft_status = fft4(N / 4 * B, FX_re, FX_im, FX_re, FX_im);
     if (fft_status != FFT_SUCCESS){
-        fprintf(stderr, "!!!!! Execution error (combine step calling fft4).\n");
+        fprintf(stderr, "!!!!! Execution error (calling fft4_transposed).\n");
         return FFT_FAILURE;
-    }
-
-    // Do the final transpose to get the output
-    //// Real matrix
-    for (int j = 0; j < B; j++){
-        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, FX_re.array + j * N, 4, 
-                            &beta, FX_re.array + j * N, 4, buffer + j * N, N/4);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (final transpose real).\n");
-            return FFT_FAILURE;
-        }
-    }
-    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
-    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
-    ////// Set dimension
-    FX_re.height = N / 4; FX_re.width = 4 * B;
-
-    //// Imaginary matrix
-    for (int j = 0; j < B; j++){
-        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N/4, 4, &alpha, FX_im.array + j * N, 4, 
-                            &beta, FX_im.array + j * N, 4, buffer + j * N, N/4);
-        if (status != CUBLAS_STATUS_SUCCESS) {
-            fprintf(stderr, "!!!! CUBLAS kernel execution error (final transpose imaginary).\n");
-            return FFT_FAILURE;
-        }
-    }
-    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
-    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
-    ////// Set dimension
-    FX_re.height = N / 4; FX_re.width = 4 * B;
-
-    cudaDeviceSynchronize();
-
+    } 
 
     // Reshape back input and output matrix: (4*(N/4) --Reshape--> N) * B
     FX_re.width = B; FX_re.height = N;
@@ -369,8 +306,8 @@ FFT_S fft4(int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft:
     checkCudaErrors(cudaMemset(X_split, 0.0f, 4 * B * 4 * sizeof(half)));
     checkCudaErrors(cudaMallocManaged((void **) &result1, 4 * B * 4 * sizeof(result1[0])));
     checkCudaErrors(cudaMemset(result1, 0.0f, 4 * B * 4 * sizeof(result1[0])));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * 4 * sizeof(result2[0])));
-    checkCudaErrors(cudaMemset(result2, 0.0f, 4 * 4 * sizeof(result2[0])));
+    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * B * 4 * sizeof(result2[0])));
+    checkCudaErrors(cudaMemset(result2, 0.0f, 4 * B * 4 * sizeof(result2[0])));
 
     // Split input
     //// Initialize Matrix and Vector data structure to store split result
@@ -669,3 +606,262 @@ __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* m
     }
 }
 
+
+FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::MatrixF FX_re, fft::MatrixF FX_im) 
+{
+    /* 
+     * Perform fft4 assuming the input is in the transposed layout
+     * M is the number of rows
+     * 4 * B is the number of columns
+     * Note that the fourier matrix is symmetric
+     */
+
+    // Variable declaration
+    cublasStatus_t status;
+    cublasHandle_t handle;
+    cudaError_t cerror;
+
+    //// Unified variables
+    float *scales; // = *re_s1, *re_s2, *im_s1, *im_s2;
+    half *X_split; // = *X_re_hi, *X_re_lo, *X_im_hi, *X_im_lo;
+    float *result1, *result2; // Store the intermediate result
+    //// Scaling variables
+    float alpha = 1.0f, beta = 0.0f; 
+
+    // Initialize cublas
+    status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! CUBLAS initialization error\n");
+        return FFT_FAILURE;
+    }
+
+    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! CUBLAS setting math mode error\n");
+        return FFT_FAILURE;
+    }
+
+    //  Allocate unified memory with 0 initialization
+    checkCudaErrors(cudaMallocManaged((void **) &scales, M * B * 4 * sizeof(float)));
+    checkCudaErrors(cudaMemset(scales, 0.0f, M * B * 4 * sizeof(float)));
+    checkCudaErrors(cudaMallocManaged((void **) &X_split, M * 4 * B * 4 * sizeof(half)));
+    checkCudaErrors(cudaMemset(X_split, 0.0f, M * 4 * B * 4 * sizeof(half)));
+    checkCudaErrors(cudaMallocManaged((void **) &result1, M * 4 * B * 4 * sizeof(result1[0])));
+    checkCudaErrors(cudaMemset(result1, 0.0f, M * 4 * B * 4 * sizeof(result1[0])));
+    checkCudaErrors(cudaMallocManaged((void **) &result2, M * 4 * B * 4 * sizeof(result2[0])));
+    checkCudaErrors(cudaMemset(result2, 0.0f, M * 4 * B * 4 * sizeof(result2[0])));
+
+    // Split input
+    //// Initialize Matrix and Vector data structure to store split result
+    fft::MatrixH X_re_hi;
+    X_re_hi.width = 4 * B;
+    X_re_hi.height = M;
+    X_re_hi.array = X_split + M * 4 * B * 0;
+
+    fft::MatrixH X_re_lo;
+    X_re_lo.width = 4 * B;
+    X_re_lo.height = M;
+    X_re_lo.array = X_split + M * 4 * B * 1;
+
+    fft::MatrixH X_im_hi;
+    X_im_hi.width = 4 * B;
+    X_im_hi.height = M;
+    X_im_hi.array = X_split + M * 4 * B * 2;
+
+    fft::MatrixH X_im_lo;
+    X_im_lo.width = 4 * B;
+    X_im_lo.height = M;
+    X_im_lo.array = X_split + M * 4 * B * 3;
+
+    fft::VectorF re_s1;
+    re_s1.size = M * B;
+    re_s1.array = scales + M * B * 0;
+
+    fft::VectorF re_s2;
+    re_s2.size = M * B;
+    re_s2.array = scales + M * B * 1;
+
+    fft::VectorF im_s1;
+    im_s1.size = M * B;
+    im_s1.array = scales + M * B * 2;
+
+    fft::VectorF im_s2;
+    im_s2.size = M * B;
+    im_s2.array = scales + M * B * 3;
+
+    //// Call splitting function
+    dim3 threadsPerBlock1(4, 16);
+    dim3 BlocksPerGrid1((B + 3)/4, (M + 15)/16);
+    mySplit_transposed<<<BlocksPerGrid1, threadsPerBlock1>>>(X_re.array, X_re_hi.array, X_re_lo.array, re_s1.array, re_s2.array, 4, M, B, X_temp);
+    mySplit_transposed<<<BlocksPerGrid1, threadsPerBlock1>>>(X_im.array, X_im_hi.array, X_im_lo.array, im_s1.array, im_s2.array, 4, M, B, X_temp);
+    cerror = cudaGetLastError();
+    if (cerror != cudaSuccess)
+    {
+        printf("CUDA error: %s during splitting in fft4_transposed\n", cudaGetErrorString(cerror));
+        return FFT_FAILURE;
+    }
+  
+ 
+    // Call cublas function and finish Matrix multiplication calculation
+    //// Call cublas gemm on F4_re
+    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_re.array,
+                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result1, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! CUBLAS kernel execution error (a * (c, d)).\n");
+        return FFT_FAILURE;
+    }
+
+    //// Call cublas gemm on F4_im
+    status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, 4, B * 4, 4, &alpha, F4_im.array,
+                        CUDA_R_16F, 4, X_split, CUDA_R_16F, 4, &beta, result2, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! CUBLAS kernel execution error (b * (c, d)).\n");
+        return FFT_FAILURE;
+    }
+
+
+    // Scale, combine and get result, add to output
+    //// Set grid and block size
+    dim3 threadsPerBlock(16, 4);
+    dim3 BlocksPerGrid((B+15)/16, 1);
+
+    //// call kernel function (buffer is zero-initialized inside)
+    myAccumulate<<<BlocksPerGrid, threadsPerBlock>>>(4, result1, result2, scales, FX_re.array, FX_im.array, B);
+    cerror = cudaGetLastError();
+    if (cerror != cudaSuccess)
+    {
+        printf("CUDA error: %s during accumulation\n", cudaGetErrorString(cerror));
+        return FFT_FAILURE;
+    }
+
+
+    // Deallocate unified memory
+    if (cudaFree(scales) != cudaSuccess) {
+        fprintf(stderr, "!!!! unified memory free error (free scales vector)\n");
+        return FFT_FAILURE;
+    }
+
+    if (cudaFree(X_split) != cudaSuccess) {
+        fprintf(stderr, "!!!! unified memory free error (free split result matrix)\n");
+        return FFT_FAILURE;
+    }
+
+    if (cudaFree(result1) != cudaSuccess) {
+        fprintf(stderr, "!!!! unified memory free error (free result 1 Matrix)\n");
+        return FFT_FAILURE;
+    }
+
+    if (cudaFree(result2) != cudaSuccess) {
+        fprintf(stderr, "!!!! unified memory free error (free result 2 Matrix)\n");
+        return FFT_FAILURE;
+    }
+
+    // Shutdown cublas
+    status = cublasDestroy(handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!! shutdown error (A)\n");
+        return FFT_FAILURE;
+    }
+
+    cudaDeviceSynchronize();
+
+    return FFT_SUCCESS;
+}
+
+
+__global__ void mySplit_transposed(float* X, half* Xhi, half* Xlo, float* s1, float* s2, int n, int M, int B, float* Xtemp)
+{
+ /* 
+  * fft::MatrixF X (N*B), fft::MatrixH Xhi (N*B), fft::MatrixH Xlo (N*B)
+  * fft::VectorF s1, fft::VectorF s2
+  * int N, int B. N is always 4
+  * Grid and dim size should be 1D, total size = B
+  * All data should be in unified memory or device memory
+  * */
+    int idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (idx < B){
+        // Calculate scaling factor 1
+        float scale1 = 0.0f;
+        for (int i = 0; i < N; i++){
+            float norm = (float) fabs(X[i + idx * N]);
+            if (norm > scale1) scale1 = norm;
+        }
+        
+        // If all number are zero, skip
+        if (scale1 == 0.0f){
+            s1[idx] = 0.0f;
+            s2[idx] = 0.0f;
+            for (int i = 0; i < N; i++){
+                Xhi[i + idx * N] = Xlo[i + idx * N] = 0.0f;
+            }
+        }
+        else
+        {
+            // Restrict scale range
+            if (scale1 < EPS) scale1 = EPS;
+            if (scale1 > 1.0f/EPS) scale1 = 1.0f/EPS;
+            s1[idx] = scale1;
+
+            // Scale the high half
+            for (int i = 0; i < N; i++){
+                Xtemp[i + idx * N] = X[i + idx * N]/scale1;
+                Xhi[i + idx * N] = (half)(Xtemp[i + idx * N]);
+                // Use Xtemp to store the residual
+                Xtemp[i + idx * N] = X[i + idx * N] - scale1 * (float)(Xhi[i + idx * N]);
+            }
+
+           // Calculate the lower scaling factor
+            float scale2 = 0.0f;
+            for (int i = 0; i < N; i++){
+                float norm = (float) fabs(Xtemp[i + idx * N]);
+                if (norm > scale2) scale2 = norm;
+            }
+        
+            // If all number are zero, skip
+            if (scale2 == 0.0f){
+                s2[idx] = 0.0f;
+                for (int i = 0; i < N; i++){
+                    Xlo[i + idx * N] = 0.0f;
+                }
+            }
+            else
+            {
+                // Restrict scale range
+                if (scale2 < EPS) scale2 = EPS;
+                if (scale2 > 1.0f/EPS) scale2 = 1.0f/EPS;
+                s2[idx] = scale2;
+
+                for (int i = 0; i < N; i++){
+                Xlo[i + idx * N] = (half) (Xtemp[i + idx * N] / scale2);
+                }
+            }
+        }
+    }
+}
+
+
+__global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R1, float* R2, int B)
+{
+    /* 
+     * N is number of elements in one column (expected to be 4)
+     * X1, X2 are 4 * (B * 4) column-major matrix. Inner order is by batch. Outer order is Re_hi, Re_lo, Im_hi, Im_lo
+     * alpha is B * 4 array. Inner order is by batch. Outer order is re_s1, re_s2, im_s1, im_s2
+     * R1, R2 are 4 * B matrix
+     * B is batch size
+     * */
+    int i = blockIdx.y * blockDim.y + threadIdx.y; // row number
+    int j = blockIdx.x * blockDim.x + threadIdx.x; // column number
+
+    if (i < N && j < B){
+        R1[i + j * N] = R2[i + j * N] = 0.0f;
+        R1[i + j * N] += alpha[j] * X1[i + j * N];
+        R1[i + j * N] += alpha[j + B] * X1[i + j * N + N * B];
+        R1[i + j * N] += -1.0f * alpha[j + 2*B] * X2[i + j * N + N * 2 * B];
+        R1[i + j * N] += -1.0f * alpha[j + 3*B] * X2[i + j * N + N * 3 * B];
+        R2[i + j * N] += alpha[j] * X2[i + j * N];
+        R2[i + j * N] += alpha[j + B] * X2[i + j * N + N * B];
+        R2[i + j * N] += alpha[j + 2*B] * X1[i + j * N + N * 2 * B];
+        R2[i + j * N] += alpha[j + 3*B] * X1[i + j * N + N * 3 * B];
+    }
+}
