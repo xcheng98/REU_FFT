@@ -30,8 +30,8 @@
 #define EPS 0.0000001192f
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 16;
-const int SIZE = 256;
+const int BATCH = 8;
+const int SIZE = 1024;
 
 
 // Utility function declaration
@@ -156,8 +156,6 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     FFT_S fft_status;
     cudaError_t cerror;
 
-    float* temp;
-
     // Initialize cublas
     status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -172,34 +170,30 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 
 
     // Transpose input matrix: (4*(N/4) -(Transpose)-> (N/4)*4) * B
-    // Store result firts in buffer, then in FX_re.array and FX_im.array
+    // Store result directly in FX_re.array and FX_im.array
     //// Set grid and block size
     dim3 threadsPerBlock1(4, 16);
     dim3 blockPerGrid1(B, (N / 4 + 15)/16); // Make sure blocks are enough
 
     //// Real matrix
-    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_re.array, buffer, B);
+    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_re.array, FX_re.array, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
         printf("CUDA error: %s during first transposition of real matrix\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
-    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
     ////// Set dimension (Note that the transpose happens batch-wisely)
     FX_re.height = N / 4; FX_re.width = 4 * B;
 
     //// Imaginary matrix
-    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_im.array, buffer, B);
+    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_im.array, FX_im.array, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
         printf("CUDA error: %s during first transposition of imaginary matrix\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
-    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
     ////// Set dimension
     FX_im.height = N / 4; FX_im.width = B * 4;
 
@@ -717,8 +711,7 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
     status = cublasGemmStridedBatchedEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, 4, 4, &alpha, X_split,
                         CUDA_R_16F, M, stride, F4_re.array, CUDA_R_16F, 4, 0, &beta, result1, CUDA_R_32F, M, stride, B * 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error: %d in fft4_transposed ((c, d) * a).\n", status);
-        printf("Error is: %d\n", status == CUBLAS_STATUS_NOT_SUPPORTED);
+        fprintf(stderr, "!!!! CUBLAS kernel execution error in fft4_transposed ((c, d) * a).\n");
         return FFT_FAILURE;
     }
 

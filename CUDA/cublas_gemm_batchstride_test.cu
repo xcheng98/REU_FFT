@@ -104,8 +104,8 @@ int main(){
 
     printf("Time of normal: %f milliseconds\n", show_mean(normal)); 
 
-    long long int offset1 = 8 * 4 * sizeof(half);
-    long long int offset2 = 8 * 4 * sizeof(float);
+    long long int offset1 = 8 * 4;
+    long long int offset2 = 8 * 4;
     long long int zero_offset = 0;
 
     __START__
@@ -120,7 +120,7 @@ int main(){
     printf("Batch result: \n");
     for (int j = 0; j < B; j++){ 
         for (int i = 0; i < 4 * 8; i++){
-            printf("%f\t", result[i]);
+            printf("%f\t", result[i + j * 4 * 8]);
         }
         printf("\n");
     }

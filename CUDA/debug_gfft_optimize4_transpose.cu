@@ -30,8 +30,8 @@
 #define EPS 0.0000001192f
 
 const float UPPER_BOUND = 1.0f;
-const int BATCH = 16;
-const int SIZE = 256;
+const int BATCH = 1;
+const int SIZE = 16;
 
 
 // Utility function declaration
@@ -91,7 +91,7 @@ int main()
             input_re.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             input_im.element(i, j) = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
             input_re.element(i, j) = (float)i;
-            input_im.element(i, j) = 0.0f;
+            input_im.element(i, j) = (float)0.0f;
             printf("X[%d] = (%.10f, %.10f) \n", i, input_re.element(i, j), input_im.element(i, j));
         }
         printf("\n");
@@ -156,8 +156,6 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
     FFT_S fft_status;
     cudaError_t cerror;
 
-    float* temp;
-
     // Initialize cublas
     status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -172,34 +170,30 @@ FFT_S gfft(int N, int B, fft::MatrixF& X_re, fft::MatrixF& X_im, fft::MatrixF& F
 
 
     // Transpose input matrix: (4*(N/4) -(Transpose)-> (N/4)*4) * B
-    // Store result firts in buffer, then in FX_re.array and FX_im.array
+    // Store result directly in FX_re.array and FX_im.array
     //// Set grid and block size
     dim3 threadsPerBlock1(4, 16);
     dim3 blockPerGrid1(B, (N / 4 + 15)/16); // Make sure blocks are enough
 
     //// Real matrix
-    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_re.array, buffer, B);
+    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_re.array, FX_re.array, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
         printf("CUDA error: %s during first transposition of real matrix\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-    ////// Swap FX_re.array and buffer to store the transposition result in FX_re.array
-    temp = FX_re.array; FX_re.array = buffer; buffer = temp;
     ////// Set dimension (Note that the transpose happens batch-wisely)
     FX_re.height = N / 4; FX_re.width = 4 * B;
 
     //// Imaginary matrix
-    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_im.array, buffer, B);
+    myTranspose<<<blockPerGrid1, threadsPerBlock1>>>(4, N / 4, X_im.array, FX_im.array, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
         printf("CUDA error: %s during first transposition of imaginary matrix\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-    ////// Swap FX_im.array and buffer to store the transposition result in FX_im.array
-    temp = FX_im.array; FX_im.array = buffer; buffer = temp;
     ////// Set dimension
     FX_im.height = N / 4; FX_im.width = B * 4;
 
@@ -626,6 +620,13 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
     cublasHandle_t handle;
     cudaError_t cerror;
 
+    printf("_____fft4_transposed_input_____\n");
+    for (int j = 1; j <= B; j++){
+        for (int i = 1; i <= M; i++){
+            printf("Unit (%d, %d): (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f)\n", i, j, X_re.element(i, 4*j - 3), X_im.element(i, 4*j-3),  X_re.element(i, 4*j - 2), X_im.element(i, 4*j-2), X_re.element(i, 4*j - 1), X_im.element(i, 4*j-1), X_re.element(i, 4*j), X_im.element(i, 4*j));
+        }
+    }
+
     //// Unified variables
     float *scales; // = *re_s1, *re_s2, *im_s1, *im_s2;
     half *X_split; // = *X_re_hi, *X_re_lo, *X_im_hi, *X_im_lo;
@@ -706,30 +707,46 @@ FFT_S fft4_transposed(int M, int B, fft::MatrixF X_re, fft::MatrixF X_im, fft::M
         return FFT_FAILURE;
     }
   
+    printf("_____fft4_transposed_after_splitting(High)_____\n");
+    for (int j = 1; j <= B; j++){
+        for (int i = 1; i <= M; i++){
+            printf("Unit (%d, %d): (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f)\n", i, j, (float)X_re_hi.element(i, 4*j - 3), (float)X_im_hi.element(i, 4*j-3),  (float)X_re_hi.element(i, 4*j - 2), (float)X_im_hi.element(i, 4*j-2), (float)X_re_hi.element(i, 4*j - 1), (float)X_im_hi.element(i, 4*j-1), (float)X_re_hi.element(i, 4*j), (float)X_im_hi.element(i, 4*j));
+        }
+    }
+    printf("_____fft4_transposed_after_splitting(Low)_____\n");
+    for (int j = 1; j <= B; j++){
+        for (int i = 1; i <= M; i++){
+            printf("Unit (%d, %d): (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f), (%.2f, %.2f)\n", i, j, (float)X_re_lo.element(i, 4*j - 3), (float)X_im_lo.element(i, 4*j-3),  (float)X_re_lo.element(i, 4*j - 2), (float)X_im_lo.element(i, 4*j-2), (float)X_re_lo.element(i, 4*j - 1), (float)X_im_lo.element(i, 4*j-1), (float)X_re_lo.element(i, 4*j), (float)X_im_lo.element(i, 4*j));
+        }
+    }
  
     // Call cublas function and finish Matrix multiplication calculation
     // The order of multiplicands are reversed
     //// Define batched offset
-    long long int stride = M * 4;
+    long long int offset = M * 4;
 
     //// Call cublas batched gemm on F4_re
 
     status = cublasGemmStridedBatchedEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, 4, 4, &alpha, X_split,
-                        CUDA_R_16F, M, stride, F4_re.array, CUDA_R_16F, 4, 0, &beta, result1, CUDA_R_32F, M, stride, B * 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+                        CUDA_R_16F, M, offset, F4_re.array, CUDA_R_16F, 4, 0, &beta, result1, CUDA_R_32F, M, offset, B * 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!! CUBLAS kernel execution error: %d in fft4_transposed ((c, d) * a).\n", status);
-        printf("Error is: %d\n", status == CUBLAS_STATUS_NOT_SUPPORTED);
+        fprintf(stderr, "!!!! CUBLAS kernel execution error in fft4_transposed ((c, d) * a).\n");
         return FFT_FAILURE;
     }
 
     //// Call cublas gemm on F4_im
     status = cublasGemmStridedBatchedEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, M, 4, 4, &alpha, X_split,
-                        CUDA_R_16F, M, stride, F4_im.array, CUDA_R_16F, 4, 0, &beta, result2, CUDA_R_32F, M, stride, B * 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
+                        CUDA_R_16F, M, offset, F4_im.array, CUDA_R_16F, 4, 0, &beta, result2, CUDA_R_32F, M, offset, B * 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS kernel execution error in fft4_transposed ((c, d) * b).\n");
         return FFT_FAILURE;
     }
-
+    
+    cudaDeviceSynchronize();
+    printf("_____fft4_transposed_after_multiplication_____\n");
+    for (int i = 0; i < M * 4 * B * 4; i++){
+        printf("No. %d: (%f, %f)\n", i, result1[i], result2[i]);
+    }
 
     // Scale, combine and get result, add to output
     //// Set grid and block size

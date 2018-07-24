@@ -1,0 +1,223 @@
+------------------------- With optimization4 (avoid the second and third transpose, writing my_transpose kernel) -------------------------
+Problem size = 256, batch size = 16, norm = 1.000000, iter = 1
+==2065== Profiling application: ./test
+==2065== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   66.43%  1.0561ms         8  132.01us  25.152us  312.89us  maxwell_sgemm_fp16_128x64_nn
+                   22.75%  361.60us         6  60.266us  1.3760us  352.22us  myTranspose(int, int, float*, float*, int)
+                    3.42%  54.400us         6  9.0660us  7.7120us  10.496us  mySplit_transposed(float*, __half*, __half*, float*, float*, int, int, int, float*)
+                    1.98%  31.520us         3  10.506us  5.5040us  14.592us  myAccumulate_transposed(float*, float*, float*, float*, float*, int, int, int)
+                    1.92%  30.528us         3  10.176us  8.1920us  14.080us  multiply_twiddle(int, int, int, float*, float*, int)
+                    1.68%  26.784us        16  1.6740us  1.6640us  1.6960us  [CUDA memset]
+                    0.80%  12.672us         2  6.3360us  3.1360us  9.5360us  mySplit(float*, __half*, __half*, float*, float*, int, int, float*)
+                    0.74%  11.744us         7  1.6770us  1.6640us  1.7280us  [CUDA memcpy HtoD]
+                    0.28%  4.3840us         1  4.3840us  4.3840us  4.3840us  myAccumulate(int, float*, float*, float*, float*, float*, int)
+      API calls:   62.34%  383.37ms        48  7.9870ms  1.1610us  381.29ms  cudaFree
+                   33.11%  203.60ms         1  203.60ms  203.60ms  203.60ms  cudaDeviceSetLimit
+                    3.44%  21.129ms        24  880.39us  6.2930us  20.656ms  cudaMallocManaged
+                    0.44%  2.6928ms        16  168.30us  47.211us  324.63us  cudaMemset
+                    0.20%  1.2486ms       189  6.6060us     200ns  332.50us  cuDeviceGetAttribute
+                    0.18%  1.1105ms        29  38.293us  11.664us  263.09us  cudaLaunchKernel
+                    0.10%  642.82us        21  30.610us  6.9910us  221.46us  cudaMalloc
+                    0.07%  401.58us        10  40.157us  4.5660us  317.91us  cudaDeviceSynchronize
+                    0.04%  219.45us         2  109.72us  107.22us  112.23us  cuDeviceTotalMem
+                    0.02%  135.31us         2  67.655us  65.494us  69.817us  cuDeviceGetName
+                    0.02%  115.29us         7  16.469us  14.894us  21.979us  cudaMemcpy
+                    0.02%  104.12us       112     929ns     766ns  2.8900us  cudaEventCreateWithFlags
+                    0.01%  90.027us       112     803ns     676ns  2.4580us  cudaEventDestroy
+                    0.01%  58.266us        14  4.1610us  3.0850us  6.5240us  cudaThreadSynchronize
+                    0.01%  38.250us        77     496ns     422ns  1.5700us  cudaDeviceGetAttribute
+                    0.00%  11.883us        25     475ns     335ns  1.1840us  cudaGetLastError
+                    0.00%  7.7850us         7  1.1120us     814ns  2.1810us  cudaGetDevice
+                    0.00%  4.1310us         1  4.1310us  4.1310us  4.1310us  cuDeviceGetPCIBusId
+                    0.00%  3.7100us         4     927ns     245ns  2.7060us  cuDeviceGetCount
+                    0.00%  1.5600us         3     520ns     244ns  1.0250us  cuDeviceGet
+                    0.00%     916ns         1     916ns     916ns     916ns  cuInit
+                    0.00%     830ns         1     830ns     830ns     830ns  cuDriverGetVersion
+
+==2065== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       4  32.000KB  4.0000KB  60.000KB  128.0000KB  32.96000us  Host To Device
+       3  21.333KB  4.0000KB  48.000KB  64.00000KB  16.60800us  Device To Host
+      15         -         -         -           -  1.922016ms  Gpu page fault groups
+Total CPU Page faults: 3
+
+
+
+------------------------- With optimization3 (remove loop in multiplying twiddle factors) -------------------------
+Problem size = 256, batch size = 16, norm = 1.000000, iter = 1
+==26799== Profiling application: ./test
+==26799== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   90.18%  4.6023ms      2016  2.2820us  1.9840us  360.04us  void transpose_readWrite_alignment_kernel<float, float, int=1, bool=0, int=6, int=5, int=3>(cublasTransposeParams<float>, float const *, float*, float const *)
+                    6.83%  348.84us         8  43.604us  24.542us  152.72us  maxwell_sgemm_fp16_128x64_nn
+                    1.33%  67.929us         8  8.4910us  3.2320us  10.175us  mySplit(float*, __half*, __half*, float*, float*, int, int, float*)
+                    0.59%  30.270us         3  10.090us  8.0320us  14.111us  multiply_twiddle(int, int, int, float*, float*, int)
+                    0.52%  26.687us        16  1.6670us  1.6630us  1.6960us  [CUDA memset]
+                    0.31%  16.000us         4  4.0000us  3.9360us  4.1280us  myAccumulate(int, float*, float*, float*, float*, float*, int)
+                    0.23%  11.646us         7  1.6630us  1.6630us  1.6640us  [CUDA memcpy HtoD]
+      API calls:   60.20%  382.82ms        48  7.9754ms  1.0840us  381.47ms  cudaFree
+                   31.63%  201.12ms         1  201.12ms  201.12ms  201.12ms  cudaDeviceSetLimit
+                    3.69%  23.449ms      2039  11.500us  10.405us  261.63us  cudaLaunchKernel
+                    3.33%  21.183ms        24  882.61us  8.2320us  20.680ms  cudaMallocManaged
+                    0.54%  3.4163ms        16  213.52us  90.099us  430.90us  cudaMemset
+                    0.20%  1.2522ms       189  6.6250us     197ns  354.76us  cuDeviceGetAttribute
+                    0.18%  1.1389ms      4044     281ns     160ns  1.1300us  cudaGetLastError
+                    0.10%  631.93us        21  30.091us  6.6370us  222.25us  cudaMalloc
+                    0.04%  239.29us         2  119.64us  106.63us  132.66us  cuDeviceTotalMem
+                    0.02%  140.43us         2  70.213us  68.361us  72.066us  cuDeviceGetName
+                    0.02%  139.93us        16  8.7450us  4.2340us  18.418us  cudaDeviceSynchronize
+                    0.02%  114.97us         7  16.423us  15.203us  21.680us  cudaMemcpy
+                    0.02%  101.03us       112     902ns     745ns  2.6440us  cudaEventCreateWithFlags
+                    0.01%  89.105us       112     795ns     665ns  2.2360us  cudaEventDestroy
+                    0.01%  56.637us        14  4.0450us  3.0150us  6.5550us  cudaThreadSynchronize
+                    0.01%  38.228us        77     496ns     408ns  1.8050us  cudaDeviceGetAttribute
+                    0.00%  7.6360us         7  1.0900us     839ns  2.4160us  cudaGetDevice
+                    0.00%  3.7860us         1  3.7860us  3.7860us  3.7860us  cuDeviceGetPCIBusId
+                    0.00%  2.8490us         4     712ns     406ns  1.3100us  cuDeviceGetCount
+                    0.00%  1.9440us         3     648ns     315ns  1.2580us  cuDeviceGet
+                    0.00%  1.0620us         1  1.0620us  1.0620us  1.0620us  cuDriverGetVersion
+                    0.00%     944ns         1     944ns     944ns     944ns  cuInit
+
+==26799== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       4  32.000KB  4.0000KB  60.000KB  128.0000KB  33.79200us  Host To Device
+       3  21.333KB  4.0000KB  48.000KB  64.00000KB  17.31200us  Device To Host
+      12         -         -         -           -  2.078336ms  Gpu page fault groups
+Total CPU Page faults: 3
+
+------------------------- With optimization2 (doing GPU splitting) -------------------------
+Problem size = 256, batch size = 16, norm = 1.000000, iter = 1
+==26422== Profiling application: ./test
+==26422== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   76.71%  4.5912ms      2016  2.2770us  1.9850us  342.18us  void transpose_readWrite_alignment_kernel<float, float, int=1, bool=0, int=6, int=5, int=3>(cublasTransposeParams<float>, float const *, float*, float const *)
+                   15.38%  920.71us       336  2.7400us  2.6890us  4.1940us  multiply_twiddle(int, int, int, float*, float*)
+                    5.86%  350.79us         8  43.849us  24.554us  155.74us  maxwell_sgemm_fp16_128x64_nn
+                    1.13%  67.930us         8  8.4910us  3.2010us  10.244us  mySplit(float*, __half*, __half*, float*, float*, int, int, float*)
+                    0.45%  26.697us        16  1.6680us  1.6640us  1.6970us  [CUDA memset]
+                    0.27%  16.006us         4  4.0010us  3.9370us  4.0980us  myAccumulate(int, float*, float*, float*, float*, float*, int)
+                    0.20%  11.715us         7  1.6730us  1.6320us  1.7290us  [CUDA memcpy HtoD]
+      API calls:   52.04%  391.93ms        48  8.1653ms  1.0830us  390.58ms  cudaFree
+                   40.55%  305.38ms         1  305.38ms  305.38ms  305.38ms  cudaDeviceSetLimit
+                    3.64%  27.382ms      2372  11.544us  10.207us  310.01us  cudaLaunchKernel
+                    2.80%  21.095ms        24  878.94us  9.1200us  20.524ms  cudaMallocManaged
+                    0.45%  3.3887ms        16  211.79us  70.979us  390.46us  cudaMemset
+                    0.17%  1.2624ms       189  6.6790us     210ns  334.51us  cuDeviceGetAttribute
+                    0.15%  1.1207ms      4044     277ns     175ns  3.8830us  cudaGetLastError
+                    0.08%  631.53us        21  30.072us  6.6520us  220.03us  cudaMalloc
+                    0.03%  247.39us         2  123.70us  116.69us  130.70us  cuDeviceTotalMem
+                    0.02%  141.75us         2  70.876us  70.547us  71.206us  cuDeviceGetName
+                    0.02%  137.41us        16  8.5880us  4.1910us  12.167us  cudaDeviceSynchronize
+                    0.02%  119.76us         7  17.109us  15.373us  25.177us  cudaMemcpy
+                    0.01%  110.20us       112     983ns     759ns  4.2850us  cudaEventCreateWithFlags
+                    0.01%  88.513us       112     790ns     664ns  2.5690us  cudaEventDestroy
+                    0.01%  58.726us        14  4.1940us  3.0130us  6.7580us  cudaThreadSynchronize
+                    0.01%  41.140us        77     534ns     416ns  2.4480us  cudaDeviceGetAttribute
+                    0.00%  7.4400us         7  1.0620us     863ns  2.1660us  cudaGetDevice
+                    0.00%  4.2650us         1  4.2650us  4.2650us  4.2650us  cuDeviceGetPCIBusId
+                    0.00%  3.0730us         4     768ns     287ns  1.8600us  cuDeviceGetCount
+                    0.00%  1.8940us         3     631ns     252ns     991ns  cuDeviceGet
+                    0.00%  1.3310us         1  1.3310us  1.3310us  1.3310us  cuInit
+                    0.00%  1.1780us         1  1.1780us  1.1780us  1.1780us  cuDriverGetVersion
+
+==26422== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+       4  32.000KB  4.0000KB  60.000KB  128.0000KB  27.52000us  Host To Device
+       3  21.333KB  4.0000KB  48.000KB  64.00000KB  12.80000us  Device To Host
+      12         -         -         -           -  2.020800ms  Gpu page fault groups
+Total CPU Page faults: 3
+
+
+
+
+------------------------- With optimization1 (calling accumulating kernel) -------------------------
+Problem size = 256, batch size = 16, norm = 1.000000, iter = 1
+==19157== Profiling application: ./test
+==19157== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   64.63%  4.5534ms      2016  2.2580us  1.9840us  326.66us  void transpose_readWrite_alignment_kernel<float, float, int=1, bool=0, int=6, int=5, int=3>(cublasTransposeParams<float>, float const *, float*, float const *)
+                   17.33%  1.2207ms         8  152.59us  24.416us  264.42us  maxwell_sgemm_fp16_128x64_nn
+                   13.03%  918.27us       336  2.7320us  2.6880us  4.1920us  multiply_twiddle(int, int, int, float*, float*)
+                    4.27%  301.16us         4  75.288us  3.9680us  164.16us  myAccumulate(int, float*, float*, float*, float*, float*, int)
+                    0.57%  40.320us        24  1.6800us  1.6640us  1.7600us  [CUDA memset]
+                    0.17%  11.968us         7  1.7090us  1.6640us  1.8560us  [CUDA memcpy HtoD]
+      API calls:   59.49%  386.56ms        48  8.0534ms  1.1400us  385.06ms  cudaFree
+                   34.58%  224.72ms        23  9.7704ms  8.7580us  224.19ms  cudaMallocManaged
+                    4.29%  27.896ms      2364  11.800us  10.073us  247.65us  cudaLaunchKernel
+                    0.97%  6.2881ms        24  262.00us  100.47us  563.04us  cudaMemset
+                    0.22%  1.4162ms       189  7.4930us     202ns  340.49us  cuDeviceGetAttribute
+                    0.17%  1.1182ms      4040     276ns     168ns  9.4770us  cudaGetLastError
+                    0.11%  744.52us        21  35.453us  7.0800us  313.33us  cudaMalloc
+                    0.05%  326.79us         2  163.40us  110.73us  216.07us  cuDeviceTotalMem
+                    0.02%  141.29us         2  70.643us  66.731us  74.556us  cuDeviceGetName
+                    0.02%  131.18us        16  8.1990us  4.1770us  10.891us  cudaDeviceSynchronize
+                    0.02%  114.66us         7  16.380us  14.996us  21.527us  cudaMemcpy
+                    0.02%  107.56us       112     960ns     771ns  3.8210us  cudaEventCreateWithFlags
+                    0.01%  91.982us       112     821ns     664ns  2.2100us  cudaEventDestroy
+                    0.01%  59.904us        14  4.2780us  3.0770us  6.7980us  cudaThreadSynchronize
+                    0.01%  39.282us        77     510ns     419ns  1.5900us  cudaDeviceGetAttribute
+                    0.00%  7.3930us         7  1.0560us     826ns  2.1430us  cudaGetDevice
+                    0.00%  3.8590us         1  3.8590us  3.8590us  3.8590us  cuDeviceGetPCIBusId
+                    0.00%  2.1670us         4     541ns     268ns     871ns  cuDeviceGetCount
+                    0.00%  1.7020us         3     567ns     242ns     924ns  cuDeviceGet
+                    0.00%  1.4270us         1  1.4270us  1.4270us  1.4270us  cuDriverGetVersion
+                    0.00%  1.1450us         1  1.1450us  1.1450us  1.1450us  cuInit
+
+==19157== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+      34  26.353KB  4.0000KB  60.000KB  896.0000KB  245.3760us  Host To Device
+      34  24.470KB  4.0000KB  60.000KB  832.0000KB  222.0480us  Device To Host
+      24         -         -         -           -  4.053664ms  Gpu page fault groups
+Total CPU Page faults: 15
+
+
+
+
+------------------------- Without optimization (calling cublas axpy) -------------------------
+Problem size = 256, batch size = 16, norm = 1.000000, iter = 1
+==19066== Profiling application: ./test
+==19066== Profiling result:
+            Type  Time(%)      Time     Calls       Avg       Min       Max  Name
+ GPU activities:   84.42%  38.868ms     32768  1.1860us  1.0880us  155.30us  void axpy_kernel_val<float, float, int=0>(cublasAxpyParamsVal<float, float, float>)
+                   10.83%  4.9873ms      2016  2.4730us  1.9840us  327.05us  void transpose_readWrite_alignment_kernel<float, float, int=1, bool=0, int=6, int=5, int=3>(cublasTransposeParams<float>, float const *, float*, float const *)
+                    2.65%  1.2214ms         8  152.67us  24.512us  276.97us  maxwell_sgemm_fp16_128x64_nn
+                    1.98%  911.66us       336  2.7130us  2.6560us  4.1600us  multiply_twiddle(int, int, int, float*, float*)
+                    0.09%  40.704us        24  1.6960us  1.6640us  1.9840us  [CUDA memset]
+                    0.03%  11.680us         7  1.6680us  1.6640us  1.6960us  [CUDA memcpy HtoD]
+      API calls:   37.67%  386.27ms        48  8.0472ms  1.1570us  384.08ms  cudaFree
+                   37.52%  384.63ms     35128  10.949us  10.182us  3.5360ms  cudaLaunchKernel
+                   21.92%  224.76ms        23  9.7721ms  6.5350us  223.96ms  cudaMallocManaged
+                    1.96%  20.128ms     69576     289ns     153ns  463.41us  cudaGetLastError
+                    0.61%  6.2433ms        24  260.14us  94.486us  489.60us  cudaMemset
+                    0.13%  1.3350ms       189  7.0630us     203ns  365.03us  cuDeviceGetAttribute
+                    0.08%  774.19us        21  36.866us  6.9940us  268.06us  cudaMalloc
+                    0.02%  243.64us         2  121.82us  106.79us  136.86us  cuDeviceTotalMem
+                    0.02%  203.20us         7  29.028us  16.125us  75.162us  cudaMemcpy
+                    0.02%  158.20us        16  9.8870us  4.5250us  21.125us  cudaDeviceSynchronize
+                    0.01%  142.95us         2  71.475us  64.495us  78.455us  cuDeviceGetName
+                    0.01%  126.47us       112  1.1290us     759ns  3.4290us  cudaEventCreateWithFlags
+                    0.01%  113.91us       112  1.0170us     669ns  12.463us  cudaEventDestroy
+                    0.01%  67.726us        14  4.8370us  3.1530us  11.691us  cudaThreadSynchronize
+                    0.00%  49.023us        77     636ns     422ns  2.7930us  cudaDeviceGetAttribute
+                    0.00%  9.8300us         7  1.4040us     874ns  2.2010us  cudaGetDevice
+                    0.00%  3.9600us         1  3.9600us  3.9600us  3.9600us  cuDeviceGetPCIBusId
+                    0.00%  3.2890us         4     822ns     319ns  1.9820us  cuDeviceGetCount
+                    0.00%  1.8000us         3     600ns     315ns  1.1430us  cuDeviceGet
+                    0.00%  1.1590us         1  1.1590us  1.1590us  1.1590us  cuDriverGetVersion
+                    0.00%  1.0020us         1  1.0020us  1.0020us  1.0020us  cuInit
+
+==19066== Unified Memory profiling result:
+Device "GeForce GTX 1050 Ti (0)"
+   Count  Avg Size  Min Size  Max Size  Total Size  Total Time  Name
+      51  20.862KB  4.0000KB  60.000KB  1.039063MB  275.4880us  Host To Device
+      49  21.632KB  4.0000KB  60.000KB  1.035156MB  236.1600us  Device To Host
+      39         -         -         -           -  5.818496ms  Gpu page fault groups
+      24  4.0000KB  4.0000KB  4.0000KB  96.00000KB           -  Memory thrashes
+Total CPU Page faults: 20
+Total CPU thrashes: 24
+
