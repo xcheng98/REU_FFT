@@ -1,0 +1,67 @@
+_____my_transpose performance____
+Input size = (4, 64), Batch size = 16
+Time = 0.675456 ms
+_____my_transpose performance____
+Input size = (4, 16), Batch size = 64
+Time = 0.185248 ms
+_____my_transpose performance____
+Input size = (4, 4), Batch size = 256
+Time = 0.081024 ms
+
+
+
+ _____my_transpose performance____
+Input size = (4, 256), Batch size = 16
+Time = 0.483488 ms
+_____my_transpose performance____
+Input size = (4, 64), Batch size = 64
+Time = 0.032992 ms
+_____my_transpose performance____
+Input size = (4, 16), Batch size = 256
+Time = 0.203328 ms
+_____my_transpose performance____
+Input size = (4, 4), Batch size = 1024
+Time = 0.084864 ms
+
+
+_____my_transpose performance____
+Input size = (4, 1024), Batch size = 16
+Time = 0.875648 ms
+_____my_transpose performance____
+Input size = (4, 256), Batch size = 64
+Time = 0.215296 ms
+_____my_transpose performance____
+Input size = (4, 64), Batch size = 256
+Time = 0.095968 ms
+_____my_transpose performance____
+Input size = (4, 16), Batch size = 1024
+Time = 0.096768 ms
+_____my_transpose performance____
+Input size = (4, 4), Batch size = 4096
+Time = 0.112384 ms
+
+
+
+_____my_transpose performance____
+Input size = (4, 4096), Batch size = 16
+Time = 1.164128 ms
+_____my_transpose performance____
+Input size = (4, 1024), Batch size = 64
+Time = 0.524576 ms
+_____my_transpose performance____
+Input size = (4, 256), Batch size = 256
+Time = 0.118720 ms
+_____my_transpose performance____
+Input size = (4, 64), Batch size = 1024
+Time = 0.120064 ms
+_____my_transpose performance____
+Input size = (4, 16), Batch size = 4096
+Time = 0.101824 ms
+_____my_transpose performance____
+Input size = (4, 4), Batch size = 16384
+Time = 0.166560 ms
+
+
+
+
+
