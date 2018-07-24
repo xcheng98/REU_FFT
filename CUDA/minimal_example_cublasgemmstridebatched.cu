@@ -11,7 +11,7 @@
 
 int UPPER_BOUND = 4096;
 
-int main(){
+int main() {
     half* F4_re;
     half* X_split;
     float* result1;
@@ -19,31 +19,30 @@ int main(){
     int M = 16;
     int B = 256*64;
 
-
     checkCudaErrors(cudaMallocManaged((void **) &F4_re, 4 * 4 * sizeof(half)));
     checkCudaErrors(cudaMallocManaged((void **) &X_split, M * 4 * B * 4 * sizeof(half)));
-    checkCudaErrors(cudaMallocManaged((void **) &result1, M * 4 * B * 4 * sizeof(float));
+    checkCudaErrors(cudaMallocManaged((void **) &result1, M * 4 * B * 4 * sizeof(float)));
 
-    F4_re(1, 1) = 1.0f;
-    F4_re(2, 1) = 1.0f;
-    F4_re(3, 1) = 1.0f;
-    F4_re(4, 1) = 1.0f;
-    F4_re(1, 2) = 1.0f;
-    F4_re(2, 2) = 0.0f;
-    F4_re(3, 2) =-1.0f;
-    F4_re(4, 2) = 0.0f;
-    F4_re(1, 3) = 1.0f;
-    F4_re(2, 3) =-1.0f;
-    F4_re(3, 3) = 1.0f;
-    F4_re(4, 3) =-1.0f;
-    F4_re(1, 4) = 1.0f;
-    F4_re(2, 4) = 0.0f;
-    F4_re(3, 4) =-1.0f;
-    F4_re(4, 4) = 0.0f;
+    F4_re[0] = 1.0f;
+    F4_re[1] = 1.0f;
+    F4_re[2] = 1.0f;
+    F4_re[3] = 1.0f;
+    F4_re[4] = 1.0f;
+    F4_re[5] = 0.0f;
+    F4_re[6] =-1.0f;
+    F4_re[7] = 0.0f;
+    F4_re[8] = 1.0f;
+    F4_re[9] =-1.0f;
+    F4_re[10] = 1.0f;
+    F4_re[11] =-1.0f;
+    F4_re[12] = 1.0f;
+    F4_re[13] = 0.0f;
+    F4_re[14] =-1.0f;
+    F4_re[15] = 0.0f;
 
     srand(time(NULL));
-    for (int i = 0; i < M * 4 * B * 4; i++){
-        X_split = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
+    for (int i = 0; i < M * 4 * B * 4; i++) {
+       X_split[i] = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
     }
 
     cublasStatus_t status;
@@ -53,12 +52,12 @@ int main(){
     status = cublasCreate(&handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS initialization error\n");
-        return exit(1);
+        exit(1);
     }
     status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! CUBLAS setting math mode error\n");
-        return exit(1);
+        exit(1);
     }
 
     long long int stride = M * 4;
@@ -73,7 +72,7 @@ int main(){
     status = cublasDestroy(handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!! shutdown error (A)\n");
-        return FFT_FAILURE;
+        exit(1);
     }
 
     checkCudaErrors(cudaFree(F4_re));
