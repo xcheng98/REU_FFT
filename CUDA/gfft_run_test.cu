@@ -6,6 +6,7 @@
  * Combine all components in one file
  * Version after multiple optimizations
  * This implementation is without matrix and vector
+ * This implementation uses global cublas handle
  */
 
 #include "util/my_include_combined.h"
@@ -41,6 +42,9 @@ __global__ void mySplit_transposed(int n, int M, float* X, half* Xhi, half* Xlo,
 __global__ void myAccumulate_transposed(int n, int M, float* X1, float* X2, float* alpha, float* R1, float* R2, int B);
 
 
+cublasStatus_t status;
+cublasHandle_t handle;
+
 half* F4_re;
 half* F4_im;
 float* buffer;
@@ -49,7 +53,7 @@ float* buffer;
 int main()
 {
     int mem_size;
-    FFT_S status;
+    FFT_S fft_status;
 
     // Allocate unified memory for input and output matrix
     float *input_re, *input_im, *output_re, *output_im;
@@ -79,16 +83,37 @@ int main()
     checkCudaErrors(cudaMallocManaged((void **) &buffer, mem_size));
 
     // Initialize Fourier matrix
-    status = init_F4();
-    if (status != FFT_SUCCESS){
+    fft_status = init_F4();
+    if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Matrix initialization error (Fourier matrix).\n");
         exit(1);
     }
 
+    // Initialize cublas with global cublas handle and status
+    status = cublasCreate(&handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!!! CUBLAS initialization error.\n");
+        exit(1);
+    }
+
+    // Allow cublas to use Tensor Core
+    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); 
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!!! CUBLAS setting math mode error.\n");
+        exit(1);
+    }
+
     // Call gfft function
-    status = gfft(SIZE, input_re, input_im, output_re, output_im, BATCH);
-    if (status != FFT_SUCCESS){
+    fft_status = gfft(SIZE, input_re, input_im, output_re, output_im, BATCH);
+    if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! gFFT execution error.\n");
+        exit(1);
+    }
+
+    // Shutdown cublas
+    status = cublasDestroy(handle);
+    if (status != CUBLAS_STATUS_SUCCESS) {
+        fprintf(stderr, "!!!!! CUBLAS shutdown error.\n");
         exit(1);
     }
 
@@ -119,21 +144,12 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
         return fft4(X_re, X_im, FX_re, FX_im, B);
     }
 
-    // Status variable declaration
-    cublasStatus_t status;
-    cublasHandle_t handle;
+    // Status and error variable declaration
     FFT_S fft_status;
     cudaError_t cerror;
 
     // Declare temp variable for buffer swapping
     float* temp;
-
-    // Initialize cublas
-    status = cublasCreate(&handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS initialization error.\n");
-        return FFT_FAILURE;
-    }
 
     // Transpose input matrix: 4 * (N/4*B) --> (N/4) * (4*B)
     // First store the result in buffer to avoid racing condition
@@ -167,7 +183,7 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
     // Wait for GPU to finish work
     cudaDeviceSynchronize();
 
-    // Recursively call gfft function, not! using buffer matrix
+    // Recursively call gfft function, NOT using buffer matrix
     fft_status = gfft(N / 4, FX_re, FX_im, FX_re, FX_im, 4 * B);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Function execution error (recursively call gfft).\n");
@@ -197,15 +213,6 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
      
     // Wait for GPU to finish work
     cudaDeviceSynchronize();
-    for (int i = 0; i < 4; i++) printf("No. %d = (%f, %f)\n", i, FX_re[i], FX_im[i]);
-    printf("%lld\n", (long long int) FX_re);
-
-    // Shutdown cublas
-    status = cublasDestroy(handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! shutdown error.\n");
-        return FFT_FAILURE;
-    }
 
     return FFT_SUCCESS;
 }
@@ -319,25 +326,11 @@ __global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* m
 FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
 {
     // Variable declaration
-    cublasStatus_t status;
-    cublasHandle_t handle;
     cudaError_t cerror;
     float alpha = 1.0f, beta = 0.0f; 
     float* scales; // = re_s1, re_s2, im_s1, im_s2;
     half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
     float *result1, *result2; // F4_re * X_split, F4_im * X_split
-
-    // Initialize cublas
-    status = cublasCreate(&handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS initialization error\n");
-        return FFT_FAILURE;
-    }
-    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS setting math mode error\n");
-        return FFT_FAILURE;
-    }
 
     //  Allocate unified memory
     checkCudaErrors(cudaMallocManaged((void **) &scales, B * 4 * sizeof(float)));
@@ -409,13 +402,6 @@ FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
     checkCudaErrors(cudaFree(X_split));
     checkCudaErrors(cudaFree(result1));
     checkCudaErrors(cudaFree(result2));
-
-    // Shutdown cublas
-    status = cublasDestroy(handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! shutdown error\n");
-        return FFT_FAILURE;
-    }
 
     return FFT_SUCCESS;
 }
@@ -531,25 +517,11 @@ __global__ void myAccumulate(int N, float* X1, float* X2, float* alpha, float* R
 FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
 {
     // Variable declaration
-    cublasStatus_t status;
-    cublasHandle_t handle;
     cudaError_t cerror;
     float alpha = 1.0f, beta = 0.0f; 
     float* scales; // = re_s1, re_s2, im_s1, im_s2;
     half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
     float *result1, *result2; // = F4_re * X_split, F4_im * X_split
-
-    // Initialize cublas
-    status = cublasCreate(&handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS initialization error\n");
-        return FFT_FAILURE;
-    }
-    status = cublasSetMathMode(handle, CUBLAS_TENSOR_OP_MATH); // allow Tensor Core
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS setting math mode error\n");
-        return FFT_FAILURE;
-    }
 
     //  Allocate unified memory
     checkCudaErrors(cudaMallocManaged((void **) &scales, M * B * 4 * sizeof(float)));
@@ -622,13 +594,6 @@ FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_i
     checkCudaErrors(cudaFree(X_split));
     checkCudaErrors(cudaFree(result1));
     checkCudaErrors(cudaFree(result2));
-    
-    // Shutdown cublas
-    status = cublasDestroy(handle);
-    if (status != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! shutdown error (A)\n");
-        return FFT_FAILURE;
-    }
 
     return FFT_SUCCESS;
 }
