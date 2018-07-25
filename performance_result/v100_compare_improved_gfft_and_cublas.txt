@@ -1,0 +1,105 @@
+---------------------------BATCH SIZE--------------------------
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 1, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.001062 milliseconds
+Time of cuFFT16: 1.293037 milliseconds, error = 0.0699239299
+Time of gfft: 2.146730 milliseconds, error = 0.0000156691
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 1, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.992769 milliseconds
+Time of cuFFT16: 1.284809 milliseconds, error = 0.6597660184
+Time of gfft: 2.102603 milliseconds, error = 0.0001509334
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.019712 milliseconds
+Time of cuFFT16: 1.292675 milliseconds, error = 0.0685421079
+Time of gfft: 2.194861 milliseconds, error = 0.0000157122
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.001703 milliseconds
+Time of cuFFT16: 1.296774 milliseconds, error = 0.6420797110
+Time of gfft: 2.240848 milliseconds, error = 0.0001474190
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 64, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.068314 milliseconds
+Time of cuFFT16: 1.320272 milliseconds, error = 0.0688918158
+Time of gfft: 2.475274 milliseconds, error = 0.0000159498
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 64, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.057285 milliseconds
+Time of cuFFT16: 1.323454 milliseconds, error = 0.6361253262
+Time of gfft: 2.446310 milliseconds, error = 0.0001470160
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 256, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.251289 milliseconds
+Time of cuFFT16: 1.434416 milliseconds, error = 0.0694853514
+Time of gfft: 4.193056 milliseconds, error = 0.0000159309
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 256, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.243096 milliseconds
+Time of cuFFT16: 1.431591 milliseconds, error = 0.6342357397
+Time of gfft: 4.164742 milliseconds, error = 0.0001454679
+
+
+
+---------------------------Input Size--------------------------
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 16, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.034531 milliseconds
+Time of cuFFT16: 1.320784 milliseconds, error = 0.0106304009
+Time of gfft: 1.896147 milliseconds, error = 0.0000014289
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 64, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.007312 milliseconds
+Time of cuFFT16: 1.288483 milliseconds, error = 0.0280708633
+Time of gfft: 2.372345 milliseconds, error = 0.0000042434
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.000307 milliseconds
+Time of cuFFT16: 1.296864 milliseconds, error = 0.0692024305
+Time of gfft: 2.244349 milliseconds, error = 0.0000154893
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 1024, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.062486 milliseconds
+Time of cuFFT16: 1.327494 milliseconds, error = 0.1600482762
+Time of gfft: 2.583936 milliseconds, error = 0.0000232006
+
+
+---------------------------Absolute value of each element--------------------------
+Problem size = 256, batch size = 16, norm = 0.000010, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.015482 milliseconds
+Time of cuFFT16: 1.292109 milliseconds, error = 0.2904448509
+Time of gfft: 2.239152 milliseconds, error = 0.0000164051
+
+Problem size = 256, batch size = 16, norm = 10000000000.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.006298 milliseconds
+Time of cuFFT16: 1.295632 milliseconds, error = nan
+Time of gfft: 2.202275 milliseconds, error = 0.0000166172
