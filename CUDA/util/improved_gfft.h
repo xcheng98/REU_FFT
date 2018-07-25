@@ -1,5 +1,6 @@
 /*
  * Implementing the FFT algorithm for general input
+ * To be called by testing program
  * Input should be fp32 vectors with size equals to the power of 4
  * Number of vectors is given by BATCH (B)
  * Recursive algorithm, base case is fft4
@@ -10,17 +11,13 @@
  * This implementation makes buffer memory like X_split, scales, result1/2 global
  */
 
-#include "util/my_include_combined.h"
+#infdef FFT_IMPROVED_GFFT_H
+#define FFT_IMPROVED_GFFT_H
 
+#include "my_include_combined.h"
 
 #define PI 3.14159265
 #define EPS 0.0000001192f
-
-
-const float UPPER_BOUND = 1.0f;
-const int BATCH = 16;
-const int SIZE = 1024;
-
 
 FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B);
  
@@ -54,46 +51,35 @@ half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
 float *result1, *result2; // F4_re * X_split, F4_im * X_split
 
 
-int main()
+int gfft(int SIZE, float* X_re, float* X_im, float* FX_re, float* FX_im, int BATCH)
 {
     int mem_size;
     FFT_S fft_status;
 
-    // Allocate unified memory for input and output matrix
+    // Allocate memory for input and output matrix
     float *input_re, *input_im, *output_re, *output_im;
     mem_size = BATCH * SIZE * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &input_re, mem_size));
-    checkCudaErrors(cudaMallocManaged((void **) &input_im, mem_size));
-    checkCudaErrors(cudaMallocManaged((void **) &output_re, mem_size));
-    checkCudaErrors(cudaMallocManaged((void **) &output_im, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &input_re, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &input_im, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &output_re, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &output_im, mem_size));
 
-    // Initialize the input data
-    srand(time(NULL));
-    printf("The input is: \n");
-    for (int j = 0; j < BATCH; j++){
-        printf("Vector %d: \n", j);
-        for (int i = 0; i < SIZE; i++){
-            input_re[i + j * SIZE] = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_im[i + j * SIZE] = (float)rand() / (float)(RAND_MAX) * 2 * UPPER_BOUND - UPPER_BOUND;
-            input_re[i + j * SIZE] = (float)i + 1;
-            input_im[i + j * SIZE] = 0.0f;
-            printf("X[%d] = (%.10f, %.10f) \n", i, input_re[i + j * SIZE], input_im[i + j * SIZE]);
-        }
-        printf("\n");
-    }
+    // Copy input matrix to device memory
+    checkCudaErrors(cudaMemcpy(input_re, X_re, mem_size, cudaMemcpyHostToDevice));
+    checkCudaErrors(cudaMemcpy(input_im, X_im, mem_size, cudaMemcpyHostToDevice));
     
     // Allocate unified memory for the buffer (global)
     mem_size = SIZE * BATCH * sizeof(float);
-    checkCudaErrors(cudaMallocManaged((void **) &buffer, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &buffer, mem_size));
 
     // Allocate unified memory for temporary result (global)
     mem_size = SIZE / 4 * BATCH * 4 * sizeof(float); // Unit length = 4, re_s1, re_s2, im_s1, im_s2
-    checkCudaErrors(cudaMallocManaged((void **) &scales, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &scales, mem_size));
     mem_size = SIZE * BATCH * 4 * sizeof(half); // re_hi, re_lo, im_hi, im_lo
-    checkCudaErrors(cudaMallocManaged((void **) &X_split, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &X_split, mem_size));
     mem_size = SIZE * BATCH * 4 * sizeof(float); // re_hi, re_lo, im_hi, im_lo
-    checkCudaErrors(cudaMallocManaged((void **) &result1, mem_size));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &result1, mem_size));
+    checkCudaErrors(cudaMalloc((void **) &result2, mem_size));
 
     // Allocate mamory for and initialize Fourier matrix
     mem_size = 16 * sizeof(half);
@@ -120,7 +106,7 @@ int main()
     }
 
     // Call gfft function
-    fft_status = gfft(SIZE, input_re, input_im, output_re, output_im, BATCH);
+    fft_status = gfft_recursion(SIZE, input_re, input_im, output_re, output_im, BATCH);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! gFFT execution error.\n");
         exit(1);
@@ -142,14 +128,9 @@ int main()
     checkCudaErrors(cudaFree(result1));
     checkCudaErrors(cudaFree(result2));
 
-    // Print result
-    printf("Result: \n");
-    for (int j = 0; j < BATCH; j++){
-        printf("Resulting vector %d: \n", j);
-        for (int i = 0; i < SIZE; i++){
-            printf("FX[%d] = (%.10f, %.10f) \n", i, output_re[i + j * SIZE], output_im[i + j * SIZE]);
-        }
-    }
+    // Copy result from device to host
+    checkCudaErrors(cudaMemcpy(FX_re, output_re, mem_size, cudaMemcpyDeviceToHost));
+    checkCudaErrors(cudaMemcpy(FX_im, output_im, mem_size, cudaMemcpyDeviceToHost));
 
     // Deallocate unified memory
     checkCudaErrors(cudaFree(input_re));
@@ -161,7 +142,7 @@ int main()
 }
 
 
-FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B) 
+FFT_S gfft_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B) 
 {
     printf("%lld\n", (long long int) FX_re);
     // Base case
@@ -209,7 +190,7 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
     cudaDeviceSynchronize();
 
     // Recursively call gfft function, NOT using buffer matrix
-    fft_status = gfft(N / 4, FX_re, FX_im, FX_re, FX_im, 4 * B);
+    fft_status = gfft_recursion(N / 4, FX_re, FX_im, FX_re, FX_im, 4 * B);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Function execution error (recursively call gfft).\n");
         return FFT_FAILURE;
@@ -703,3 +684,5 @@ __global__ void myAccumulate_transposed(int n, int M, float* X1, float* X2, floa
         R2[result_idx] += alpha[factor_idx + 3*f_stride] * X1[result_idx + 3*e_stride];
     }
 }
+
+#endif /* FFT_IMPROVED_GFFT_H */
