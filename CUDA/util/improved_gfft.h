@@ -11,7 +11,7 @@
  * This implementation makes buffer memory like X_split, scales, result1/2 global
  */
 
-#infdef FFT_IMPROVED_GFFT_H
+#ifndef FFT_IMPROVED_GFFT_H
 #define FFT_IMPROVED_GFFT_H
 
 #include "my_include_combined.h"
@@ -19,7 +19,7 @@
 #define PI 3.14159265
 #define EPS 0.0000001192f
 
-FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B);
+FFT_S gfft_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B);
  
 __global__ void myTranspose(int m, int n, float* input, float* output, int B);
 
@@ -129,8 +129,12 @@ int gfft(int SIZE, float* X_re, float* X_im, float* FX_re, float* FX_im, int BAT
     checkCudaErrors(cudaFree(result2));
 
     // Copy result from device to host
+    mem_size = BATCH * SIZE * sizeof(float);
     checkCudaErrors(cudaMemcpy(FX_re, output_re, mem_size, cudaMemcpyDeviceToHost));
     checkCudaErrors(cudaMemcpy(FX_im, output_im, mem_size, cudaMemcpyDeviceToHost));
+
+    // Wait for GPU to finish work
+    cudaDeviceSynchronize();
 
     // Deallocate unified memory
     checkCudaErrors(cudaFree(input_re));
@@ -138,13 +142,12 @@ int gfft(int SIZE, float* X_re, float* X_im, float* FX_re, float* FX_im, int BAT
     checkCudaErrors(cudaFree(output_re));
     checkCudaErrors(cudaFree(output_im));
 
-    exit(0);
+    return 0;
 }
 
 
 FFT_S gfft_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B) 
 {
-    printf("%lld\n", (long long int) FX_re);
     // Base case
     if (N == 4) {
         return fft4(X_re, X_im, FX_re, FX_im, B);

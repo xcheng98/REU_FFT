@@ -21,7 +21,7 @@ typedef float2 Csingle;
 const float NORM = 1.0f;
 const int BATCH = 16;
 const int SIZE = 256;
-const int ITERATION
+const int ITERATION = 10;
 const int DISPLAY_DATA = 0;
 const int DEVICE = 0;
 
@@ -139,13 +139,14 @@ int cuFFT16(int N, Chalf* X, Chalf* FX, int B){
 }
 
 
-int get_parameters(int argc, char **argv, int help_info, float& norm, int& n, int& batch, int& display, int& device){
+int get_parameters(int argc, char **argv, int& help_info, float& norm, int& n, int& batch, int& iter, int& display, int& device){
     if (checkCmdLineFlag(argc, (const char **)argv, "help") ||
             checkCmdLineFlag(argc, (const char **)argv, "?") ||
             checkCmdLineFlag(argc, (const char **)argv, "h")) {
         printf("Usage: -norm=upper_bound (Max norm of input elements)\n"
                " -n=size (Input vector size)\n"
                " -batch=batch_size (Number of input vectors)\n"
+               " -iter=iteration (Times of experiments)\n"
                " -display=show_result (0 or 1) \n" 
                " -device=ID (ID >= 0 for deviceID)\n");
         help_info = 1;
@@ -154,7 +155,7 @@ int get_parameters(int argc, char **argv, int help_info, float& norm, int& n, in
 
     // Get and set parameter 
     if (checkCmdLineFlag(argc, (const char **)argv, "norm")) {
-        norm = getCmdLineArgumentInt(argc, (const char **)argv, "norm");
+        norm = getCmdLineArgumentFloat(argc, (const char **)argv, "norm");
     }
 
     if (checkCmdLineFlag(argc, (const char **)argv, "n")) {
@@ -165,8 +166,8 @@ int get_parameters(int argc, char **argv, int help_info, float& norm, int& n, in
         batch = getCmdLineArgumentInt(argc, (const char **)argv, "batch");
     }
     
-    if (checkCmdLineFlag(argc, (const char **)argv, "bs")) {
-        bs = getCmdLineArgumentInt(argc, (const char **)argv, "bs");
+    if (checkCmdLineFlag(argc, (const char **)argv, "iter")) {
+        iter = getCmdLineArgumentInt(argc, (const char **)argv, "iter");
     }
     
     if (checkCmdLineFlag(argc, (const char **)argv, "display")) {
@@ -199,6 +200,8 @@ int get_parameters(int argc, char **argv, int help_info, float& norm, int& n, in
     {
         printf("GPU Device %d: \"%s\" with compute capability %d.%d\n", device, deviceProp.name, deviceProp.major, deviceProp.minor);
     }
+
+    return 0;
 }
 
 
@@ -208,22 +211,22 @@ int main(int argc, char **argv)
     float norm = NORM;
     int n = SIZE;
     int batch = BATCH;
+    int iter = ITERATION;
     int display = DISPLAY_DATA;
     int device = DEVICE;
 
-    get_parameters(argc, argv, help_info, norm, n, batch, display, device);
+    get_parameters(argc, argv, help_info, norm, n, batch, iter, display, device);
 
     if (help_info == 1){
         exit(EXIT_SUCCESS);
     }
 
     // Start program
-    printf("Problem size = %d, batch size = %d, norm = %f\n", n, batch, norm);
+    printf("Problem size = %d, batch size = %d, norm = %f, iteration = %d\n", n, batch, norm, iter);
 
     printf("[Testing of gfft and cuFFT] - Starting...\n");
 
     // Define error, event, result data structure
-    cudaError_t error;
     cudaEvent_t start, stop;
     std::vector<float> cuFFT32Run, cuFFT16Run, gfftRun;
     std::vector<float> cuFFT16Error, gfftError;
@@ -243,9 +246,10 @@ int main(int argc, char **argv)
     cuFFT32(n, X_32, FX_32, batch);
     cuFFT16(n, X_16, FX_16, batch);
     gfft(n, X_re, X_im, FX_re, FX_im, batch);
-   
+  
+ 
     // Run experiment
-    for (int i = 0; i < 10; i++){
+    for (int i = 0; i < iter; i++){
         // Initialize input
         srand(time(NULL));
         for (int j = 0; j < n * batch; j++){
@@ -294,7 +298,7 @@ int main(int argc, char **argv)
     delete [] X_re;
     delete [] X_im;
     delete [] FX_re;
-    delete [] FX_32;
+    delete [] FX_im;
     delete [] X_32;
     delete [] FX_32;
     delete [] X_16;

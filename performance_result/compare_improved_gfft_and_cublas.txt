@@ -1,0 +1,159 @@
+---------------------------BATCH SIZE--------------------------
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 1, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.014899 milliseconds
+Time of cuFFT16: 1.332602 milliseconds, error = 0.0662141517
+Time of gfft: 2.956602 milliseconds, error = 0.0000151141
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 1, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.913859 milliseconds
+Time of cuFFT16: 1.238997 milliseconds, error = 0.6182792783
+Time of gfft: 2.790350 milliseconds, error = 0.0001482912
+
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.061152 milliseconds
+Time of cuFFT16: 1.379709 milliseconds, error = 0.0690353513
+Time of gfft: 3.909507 milliseconds, error = 0.0000158637
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.938730 milliseconds
+Time of cuFFT16: 1.259648 milliseconds, error = 0.6349706054
+Time of gfft: 3.713451 milliseconds, error = 0.0001487629
+
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 64, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.092752 milliseconds
+Time of cuFFT16: 1.345014 milliseconds, error = 0.0697226748
+Time of gfft: 6.605549 milliseconds, error = 0.0000159268
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 64, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.125464 milliseconds
+Time of cuFFT16: 1.457144 milliseconds, error = 0.6400045753
+Time of gfft: 6.598543 milliseconds, error = 0.0001472474
+
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 256, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.480214 milliseconds
+Time of cuFFT16: 1.637571 milliseconds, error = 0.0693265945
+Time of gfft: 17.070066 milliseconds, error = 0.0000158444
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 256, norm = 1.000000, iteration = 100
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.784283 milliseconds
+Time of cuFFT16: 1.539976 milliseconds, error = 0.6333343387
+Time of gfft: 14.862253 milliseconds, error = 0.0001458707
+
+
+
+---------------------------Input Size--------------------------
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 16, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.945907 milliseconds
+Time of cuFFT16: 1.229005 milliseconds, error = 0.0099227922
+Time of gfft: 2.375725 milliseconds, error = 0.0000017531
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 64, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.113590 milliseconds
+Time of cuFFT16: 1.467994 milliseconds, error = 0.0285350271
+Time of gfft: 3.310701 milliseconds, error = 0.0000053325
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.945718 milliseconds
+Time of cuFFT16: 1.240784 milliseconds, error = 0.0687067360
+Time of gfft: 3.656640 milliseconds, error = 0.0000161610
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 1024, batch size = 16, norm = 1.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.128918 milliseconds
+Time of cuFFT16: 1.467466 milliseconds, error = 0.1628018022
+Time of gfft: 7.113312 milliseconds, error = 0.0000235572
+
+
+---------------------------Absolute value of each element--------------------------
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 0.00000000000010, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.073069 milliseconds
+Time of cuFFT16: 1.401216 milliseconds, error = 81.9270629883
+Time of gfft: 3.946822 milliseconds, error = 3.1190907955
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 0.00000000001000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.125703 milliseconds
+Time of cuFFT16: 1.443814 milliseconds, error = 81.0216598511
+Time of gfft: 4.009504 milliseconds, error = 0.0313547999
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 0.00000010000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.058390 milliseconds
+Time of cuFFT16: 1.401379 milliseconds, error = 29.6579380035
+Time of gfft: 4.005719 milliseconds, error = 0.0000164770
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 0.000010, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.947235 milliseconds
+Time of cuFFT16: 1.266006 milliseconds, error = 0.2941758037
+Time of gfft: 3.720000 milliseconds, error = 0.0000159680
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 0.100000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.998314 milliseconds
+Time of cuFFT16: 1.340179 milliseconds, error = 0.0698979795
+Time of gfft: 3.785664 milliseconds, error = 0.0000163478
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 10.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.054579 milliseconds
+Time of cuFFT16: 1.333949 milliseconds, error = 0.0700344071
+Time of gfft: 3.877296 milliseconds, error = 0.0000156766
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 10000.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.048054 milliseconds
+Time of cuFFT16: 1.356074 milliseconds, error = nan
+Time of gfft: 3.967658 milliseconds, error = 0.0000158298
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 30000001024.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 1.101712 milliseconds
+Time of cuFFT16: 1.435558 milliseconds, error = nan
+Time of gfft: 3.919478 milliseconds, error = 0.0000171258
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 256, batch size = 16, norm = 99999997952.000000, iteration = 10
+[Testing of gfft and cuFFT] - Starting...
+Time of cuFFT32: 0.958470 milliseconds
+Time of cuFFT16: 1.273395 milliseconds, error = nan
+Time of gfft: 3.718173 milliseconds, error = nan
+
+
+

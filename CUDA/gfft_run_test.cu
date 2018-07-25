@@ -163,7 +163,6 @@ int main()
 
 FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B) 
 {
-    printf("%lld\n", (long long int) FX_re);
     // Base case
     if (N == 4) {
         return fft4(X_re, X_im, FX_re, FX_im, B);
