@@ -7,6 +7,7 @@
  * Version after multiple optimizations
  * This implementation is without matrix and vector
  * This implementation uses global cublas handle
+ * This implementation makes buffer memory like X_split, scales, result1/2 global
  */
 
 #include "util/my_include_combined.h"
@@ -49,6 +50,10 @@ half* F4_re;
 half* F4_im;
 float* buffer;
 
+float* scales; // = re_s1, re_s2, im_s1, im_s2;
+half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
+float *result1, *result2; // F4_re * X_split, F4_im * X_split
+
 
 int main()
 {
@@ -78,9 +83,18 @@ int main()
         printf("\n");
     }
     
-    // Allocate unified memory for the buffer (array of float)
+    // Allocate unified memory for the buffer (global)
     mem_size = SIZE * BATCH * sizeof(float);
     checkCudaErrors(cudaMallocManaged((void **) &buffer, mem_size));
+
+    // Allocate unified memory for temporary result (global)
+    mem_size = SIZE / 4 * BATCH * 4 * sizeof(float); // Unit length = 4, re_s1, re_s2, im_s1, im_s2
+    checkCudaErrors(cudaMallocManaged((void **) &scales, mem_size));
+    mem_size = SIZE * BATCH * 4 * sizeof(half); // re_hi, re_lo, im_hi, im_lo
+    checkCudaErrors(cudaMallocManaged((void **) &X_split, mem_size));
+    mem_size = SIZE * BATCH * 4 * sizeof(float); // re_hi, re_lo, im_hi, im_lo
+    checkCudaErrors(cudaMallocManaged((void **) &result1, mem_size));
+    checkCudaErrors(cudaMallocManaged((void **) &result2, mem_size));
 
     // Initialize Fourier matrix
     fft_status = init_F4();
@@ -116,6 +130,13 @@ int main()
         fprintf(stderr, "!!!!! CUBLAS shutdown error.\n");
         exit(1);
     }
+
+    // Deallocate unified memory for buffer and temporary result
+    checkCudaErrors(cudaFree(buffer));
+    checkCudaErrors(cudaFree(scales));
+    checkCudaErrors(cudaFree(X_split));
+    checkCudaErrors(cudaFree(result1));
+    checkCudaErrors(cudaFree(result2));
 
     // Print result
     printf("Result: \n");
@@ -203,6 +224,9 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
         fprintf(stderr, "!!!!! CUDA error: %s during twiddle factor multiplication.\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
+
+    // Wait for GPU to finish work
+    cudaDeviceSynchronize();
 
     // Call the optimized fft4 function to avoid transposition
     fft_status = fft4_transposed(N / 4, FX_re, FX_im, FX_re, FX_im, B);
@@ -328,15 +352,7 @@ FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
     // Variable declaration
     cudaError_t cerror;
     float alpha = 1.0f, beta = 0.0f; 
-    float* scales; // = re_s1, re_s2, im_s1, im_s2;
-    half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
-    float *result1, *result2; // F4_re * X_split, F4_im * X_split
-
-    //  Allocate unified memory
-    checkCudaErrors(cudaMallocManaged((void **) &scales, B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **) &X_split, 4 * B * 4 * sizeof(half)));
-    checkCudaErrors(cudaMallocManaged((void **) &result1, 4 * B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, 4 * B * 4 * sizeof(float)));
+    // Temporary results are global variables
 
     // Split input
     //// Define segmentation pointers for convenience
@@ -393,15 +409,6 @@ FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
         fprintf(stderr, "!!!!! CUDA error: %s during fft4 accumulation\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-
-    // Wait for GPU to finish work
-    cudaDeviceSynchronize();
-
-    // Deallocate unified memory
-    checkCudaErrors(cudaFree(scales));
-    checkCudaErrors(cudaFree(X_split));
-    checkCudaErrors(cudaFree(result1));
-    checkCudaErrors(cudaFree(result2));
 
     return FFT_SUCCESS;
 }
@@ -519,15 +526,7 @@ FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_i
     // Variable declaration
     cudaError_t cerror;
     float alpha = 1.0f, beta = 0.0f; 
-    float* scales; // = re_s1, re_s2, im_s1, im_s2;
-    half* X_split; // = X_re_hi, X_re_lo, X_im_hi, X_im_lo;
-    float *result1, *result2; // = F4_re * X_split, F4_im * X_split
-
-    //  Allocate unified memory
-    checkCudaErrors(cudaMallocManaged((void **) &scales, M * B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **) &X_split, M * 4 * B * 4 * sizeof(half)));
-    checkCudaErrors(cudaMallocManaged((void **) &result1, M * 4 * B * 4 * sizeof(float)));
-    checkCudaErrors(cudaMallocManaged((void **) &result2, M * 4 * B * 4 * sizeof(float)));
+    // Temporary results are global variables
 
     // Split input
     //// Define segmentation pointers for convenience
@@ -585,15 +584,6 @@ FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_i
         fprintf(stderr, "!!!!! CUDA error: %s during accumulation in fft4_transposed\n", cudaGetErrorString(cerror));
         return FFT_FAILURE;
     }
-
-    // Wait for GPU to finish work
-    cudaDeviceSynchronize();
-
-    // Deallocate the unified memory
-    checkCudaErrors(cudaFree(scales));
-    checkCudaErrors(cudaFree(X_split));
-    checkCudaErrors(cudaFree(result1));
-    checkCudaErrors(cudaFree(result2));
 
     return FFT_SUCCESS;
 }
