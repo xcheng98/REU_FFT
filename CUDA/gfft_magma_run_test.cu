@@ -15,10 +15,10 @@
 #include <magma.h>
 
 extern "C" void
-magmablas_ztranspose_batched_stride(
+magmablas_stranspose_batched_stride(
     magma_int_t m, magma_int_t n, magma_int_t stride,
-    magmaDoubleComplex *dA_array,  magma_int_t ldda,
-    magmaDoubleComplex *dAT_array, magma_int_t lddat,
+    magmaFloat *dA_array,  magma_int_t ldda,
+    magmaFloat *dAT_array, magma_int_t lddat,
     magma_int_t batchCount,
     magma_queue_t queue );
 
