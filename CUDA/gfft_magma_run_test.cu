@@ -17,8 +17,8 @@
 extern "C" void
 magmablas_stranspose_batched_stride(
     magma_int_t m, magma_int_t n, magma_int_t stride,
-    magmaFloat *dA_array,  magma_int_t ldda,
-    magmaFloat *dAT_array, magma_int_t lddat,
+    float *dA_array,  magma_int_t ldda,
+    float *dAT_array, magma_int_t lddat,
     magma_int_t batchCount,
     magma_queue_t queue );
 
@@ -187,7 +187,7 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
 
     // Transpose input matrix: 4 * (N/4*B) --> (N/4) * (4*B)
     // First store the result in buffer to avoid racing condition
-    //// Set grid and block size
+/*    //// Set grid and block size
     dim3 threadsPerBlock1(4, 16);
     dim3 blockPerGrid1(B, (N / 4 + 15)/16); // Make sure blocks are enough
 
@@ -213,6 +213,13 @@ FFT_S gfft(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B)
     }
     ////// Swap FX_im and buffer to store the transposition result in FX_im
     temp = FX_im; FX_im = buffer; buffer = temp;
+*/
+    magmablas_stranspose_batched_stride(4, N / 4, N, X_re, 4, buffer, N / 4, B, NULL);
+    temp = FX_re; FX_re = buffer; buffer = temp;
+
+    magmablas_stranspose_batched_stride(4, N / 4, N, X_im, 4, buffer, N / 4, B, NULL);
+    temp = FX_im; FX_im = buffer; buffer = temp;
+
 
     // Wait for GPU to finish work
     cudaDeviceSynchronize();
