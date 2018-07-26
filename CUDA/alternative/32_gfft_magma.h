@@ -14,17 +14,7 @@
 #ifndef FFT_32_GFFT_H
 #define FFT_32_GFFT_H
 
-#include "my_include_combined.h"
-#include "improved_gfft.h"
-
-#include <magma.h>
-extern "C" void
-magmablas_stranspose_batched_stride(
-    magma_int_t m, magma_int_t n, magma_int_t stride,
-    float *dA_array,  magma_int_t ldda,
-    float *dAT_array, magma_int_t lddat,
-    magma_int_t batchCount,
-    magma_queue_t queue );
+#include "improved_gfft_magma.h"
 
 FFT_S gfft_32_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& FX_im, int B);
 
@@ -286,7 +276,7 @@ FFT_S fft4_32(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
         F4_re_32, CUDA_R_32F, 4, X_re, CUDA_R_32F, 4, &beta,
         result1_32, CUDA_R_32F, 4, CUDA_R_32F, CUBLAS_GEMM_DEFAULT);
     if (status_32 != CUBLAS_STATUS_SUCCESS) {
-        fprintf(stderr, "!!!!! CUBLAS kernel execution error (F4_re * X_re).\n");
+        fprintf(stderr, "!!!!! CUBLAS kernel execution error (F4_re * X_re): %d.\n", status_32);
         return FFT_FAILURE;
     }
 

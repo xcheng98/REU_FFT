@@ -14,7 +14,7 @@
 #ifndef FFT_IMPROVED_GFFT_H
 #define FFT_IMPROVED_GFFT_H
 
-#include "my_include_combined.h"
+#include "../util/my_include_combined.h"
 
 #include <magma.h>
 extern "C" void
