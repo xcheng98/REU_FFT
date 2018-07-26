@@ -11,8 +11,8 @@
  * This implementation uses global cublas handle
  */
 
-#ifndef FFT_IMPROVED_GFFT_H
-#define FFT_IMPROVED_GFFT_H
+#ifndef FFT_32_GFFT_H
+#define FFT_32_GFFT_H
 
 #include "my_include_combined.h"
 #include "improved_gfft.h"
@@ -135,7 +135,7 @@ FFT_S gfft_32_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& 
 {
     // Base case
     if (N == 4) {
-        return fft4(X_re, X_im, FX_re, FX_im, B);
+        return fft4_32(X_re, X_im, FX_re, FX_im, B);
     }
 
     // Status and error variable declaration
@@ -202,7 +202,7 @@ FFT_S gfft_32_recursion(int N, float* X_re, float* X_im, float*& FX_re, float*& 
     cudaDeviceSynchronize();
 
     // Call the optimized fft4 function to avoid transposition
-    fft_status = fft4_transposed(N / 4, FX_re, FX_im, FX_re, FX_im, B);
+    fft_status = fft4_transposed_32(N / 4, FX_re, FX_im, FX_re, FX_im, B);
     if (fft_status != FFT_SUCCESS){
         fprintf(stderr, "!!!!! Function execution error (calling fft4_transposed).\n");
         return FFT_FAILURE;
@@ -259,62 +259,12 @@ FFT_S init_F4_32()
 
 
 /* 
- * Transpose every input matrix of size m * n
- * Number of matrices is given by B 
- * Every matrix in a batch is transposed independently
- * Input is expected to be matrix of size m * (n * B)
- * Output is expected to be matrix of size n * (m * B)
- * The grid size is expected to be B in horizontal dimension
- * Usage: transpose a matrix of size 4 * (N/4 * B) to (N/4) * (4 * B)
- * */
-__global__ void myTranspose(int m, int n, float* input, float* output, int B)
-{
-    // Calculate position in the OUTPUT matrix (0 based)
-    int j = threadIdx.x; // Column number within a matrix, expected to be 0, 1, 2, 3
-    int i = blockIdx.y * blockDim.y + threadIdx.y; // Row number
-    int matrix_id = blockIdx.x; // The index of matrix in the batch
-
-    if (i < n && j < m && matrix_id < B){
-        output[matrix_id * m * n + j * n + i] = input[matrix_id * m * n + i * m + j];
-    }
-}
-
-/* 
- * Multifly every element of the input matrix with the twiddle factor
- * Every matrix in a batch is processed independently
- * Block and thread layout should be 2D, and the total dimension is expected to be (m, n * B)
- * n is expected to be 4
- * result.re(i, j) [0 based] = xre(i, j) * cos(2pi/N * i * j) + xim(i, j) * sin(2pi/N * i * j)
- * result.im(i, j) [0 based] = -xre(i, j) * sin(2pi/N * i * j) + xim(i, j) * cos(2pi/N * i * j)
- * ONLY that thread will access the particular matrix_re and matrix_im, so buffer is not needed
- * */
-__global__ void multiply_twiddle(int N, int m, int n, float* matrix_re, float* matrix_im, int B)
-{
-    // Calculate position
-    int j = threadIdx.x; // Column number within a matrix, 0 to 3 in radix 4
-    int i = blockIdx.y * blockDim.y + threadIdx.y; // Row number within a matrix
-    int matrix_id = blockIdx.x; // Index of matrix in the batch
-
-    if (i < m && j < n && matrix_id < B){
-        // Per-thread local variables
-        int index = matrix_id * N + j * m + i;
-        float tw_re = cos(2 * PI / N * i * j);
-        float tw_im = sin(2 * PI / N * i * j);
-        float result_re = matrix_re[index] * tw_re + matrix_im[index] * tw_im;
-        float result_im = -1.0f * matrix_re[index] * tw_im + matrix_im[index] * tw_re;
-
-        matrix_re[index] = result_re;
-        matrix_im[index] = result_im;
-    }
-}
-
-/* 
  * Perform fft on every length-4 vector
  * Batch size is given by B
  * Internally split every FP32 input into two FP16 vectors
  * Combine them together after FFT
  * */
-FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
+FFT_S fft4_32(float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
 {
     // Variable declaration
     cudaError_t cerror;
@@ -385,7 +335,7 @@ FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
     dim3 blocksPerGrid((B+15)/16, 1);
 
     //// call kernel function (FX_re and FX_im will be zero-initialized)
-    myAccumulate<<<blocksPerGrid, threadsPerBlock>>>(4, result1_32, result2_32, result3_32, result4_32, FX_re, FX_im, B);
+    myAccumulate_32<<<blocksPerGrid, threadsPerBlock>>>(4, result1_32, result2_32, result3_32, result4_32, FX_re, FX_im, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
@@ -407,7 +357,7 @@ FFT_S fft4(float* X_re, float* X_im, float* FX_re, float* FX_im, int B)
  * alpha is B * 4 array. Inner order is by batch. Outer order is re_s1, re_s2, im_s1, im_s2
  * R1, R2 are resulting matrix of size 4 * B
  * */
-__global__ void myAccumulate(int N, float* X1, float* X2, float* X3, float* X4, float* R1, float* R2, int B)
+__global__ void myAccumulate_32(int N, float* X1, float* X2, float* X3, float* X4, float* R1, float* R2, int B)
 {
     int i = blockIdx.y * blockDim.y + threadIdx.y; // row number
     int j = blockIdx.x * blockDim.x + threadIdx.x; // column number
@@ -428,7 +378,7 @@ __global__ void myAccumulate(int N, float* X1, float* X2, float* X3, float* X4, 
  * The number of columns of the input matrix is 4 * B (4 for radix 4)
  * Note that the fourier matrix is symmetric
  */
-FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
+FFT_S fft4_transposed_32(int M, float* X_re, float* X_im, float* FX_re, float* FX_im, int B) 
 {
     // Variable declaration
     cudaError_t cerror;
@@ -500,7 +450,7 @@ FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_i
     dim3 blocksPerGrid2((4 * B + 15)/16, (M + 15)/16);
 
     //// call the accumulation kernel function (FX_re and FX_im will be zero-initialized inside)
-    myAccumulate_transposed<<<blocksPerGrid2, threadsPerBlock2>>>(4, M, result1_32, result2_32, result3_32, result4_32, FX_re, FX_im, B);
+    myAccumulate_transposed_32<<<blocksPerGrid2, threadsPerBlock2>>>(4, M, result1_32, result2_32, result3_32, result4_32, FX_re, FX_im, B);
     cerror = cudaGetLastError();
     if (cerror != cudaSuccess)
     {
@@ -521,7 +471,7 @@ FFT_S fft4_transposed(int M, float* X_re, float* X_im, float* FX_re, float* FX_i
  * alpha is a M * B * 4 arrays. Inner most order is by horizontal index. Then by batch. Outer order is re_s1, re_s2, im_s1, im_s2
  * R1, R2 are M * (4 * B) matrices
  * */
-__global__ void myAccumulate_transposed(int n, int M, float* X1, float* X2, float* X3, float* X4, float* R1, float* R2, int B)
+__global__ void myAccumulate_transposed_32(int n, int M, float* X1, float* X2, float* X3, float* X4, float* R1, float* R2, int B)
 {
     int i = blockIdx.y * blockDim.y + threadIdx.y; // vertical index of the element, max M
     int j = blockIdx.x * blockDim.x + threadIdx.x; // horizontal index of the element, max 4 * B
@@ -537,4 +487,4 @@ __global__ void myAccumulate_transposed(int n, int M, float* X1, float* X2, floa
     }
 }
 
-#endif /* FFT_IMPROVED_GFFT_H */
+#endif /* FFT_32_GFFT_H */
