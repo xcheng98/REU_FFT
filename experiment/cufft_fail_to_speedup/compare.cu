@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdlib.h>
+#include <vector>
 
 // CUDA includes
 #include <cuda_runtime.h>
@@ -14,6 +15,10 @@
 // CUFFT
 #include <cufft.h>
 #include <cufftXt.h>
+
+// nvidia helper
+#include "../checkCudaErrors.h"
+#include "../helper_string.h"
 
 typedef half2 Chalf;
 typedef float2 Csingle;
@@ -180,13 +185,13 @@ int gemm(int N, half* X, half* FX, int B){
     
     __START__
     status = cublasGemmEx(handle, CUBLAS_OP_N, CUBLAS_OP_N, N, N, N, &alpha, 
-        d_idata, CUDA_R_16F, N, d_idata2, CUDA_R_16F, 4, &beta,
-        d_odata, CUDA_R_16F, 4, CUDA_R_16F, CUBLAS_GEMM_DEFAULT);
+        d_idata, CUDA_R_16F, N, d_idata2, CUDA_R_16F, N, &beta,
+        d_odata, CUDA_R_16F, N, CUDA_R_16F, CUBLAS_GEMM_DEFAULT);
     if (status != CUBLAS_STATUS_SUCCESS) {
         fprintf(stderr, "!!!!! CUBLAS kernel execution error .\n");
-        return FFT_FAILURE;
+        exit(-1);
     }
-    __STOP__(gfftRun)
+    __STOP__(gemmRun)
 
     // Copy Device memory to output
     checkCudaErrors(cudaMemcpy(FX, d_odata, mem_size, cudaMemcpyDeviceToHost));
