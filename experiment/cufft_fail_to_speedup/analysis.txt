@@ -1,0 +1,22 @@
+Use the case: Problem size = 512, batch size = 16, norm = 1.000000, iteration = 100
+V100:
+Time of cuFFT32: 0.205979 milliseconds
+Time of cuFFT16: 0.310882 milliseconds
+Time of gemm: 0.044749 milliseconds
+
+GTX1050:
+Time of cuFFT32: 1.553677 milliseconds
+Time of cuFFT16: 13.619476 milliseconds
+Time of gemm: 7.035990 milliseconds
+
+From official information, V100 is 4.2x better than P100 in gemm
+P100:
+Time of cuFFT32: 0.041502 milliseconds
+Time of cuFFT16: 0.363804 milliseconds
+Time of gemm: 0.1879458 milliseconds
+
+Adjust the optimization of cuFFT32 on GTX1050:
+P100:
+Time of cuFFT32: 0.231371 milliseconds
+Time of cuFFT16: 0.363804 milliseconds
+Time of gemm: 0.1879458 milliseconds

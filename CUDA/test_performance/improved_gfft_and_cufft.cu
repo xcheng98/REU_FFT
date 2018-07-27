@@ -278,6 +278,9 @@ int main(int argc, char **argv)
         gfft(n, X_re, X_im, FX_re, FX_im, batch);
         __STOP__(gfftRun)
 
+        error1 = 0.0f;
+        error2 = 0.0f;
+
         // Calculate error
         for (int j = 0; j < n * batch; j++){
             error1 += (float)fabs((float)(FX_16[j].x) - FX_32[j].x);

@@ -29,6 +29,32 @@ Time of cuFFT32: 0.205014 milliseconds
 Time of cuFFT16: 0.306808 milliseconds
 Time of gemm: 0.042428 milliseconds
 
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 512, batch size = 16, norm = 1.000000, iteration = 100
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 0.205979 milliseconds
+Time of cuFFT16: 0.310882 milliseconds
+Time of gemm: 0.044749 milliseconds
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 1024, batch size = 16, norm = 1.000000, iteration = 10
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 0.738742 milliseconds
+Time of cuFFT16: 1.161584 milliseconds
+Time of gemm: 0.070198 milliseconds
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 2048, batch size = 16, norm = 1.000000, iteration = 10
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 3.941101 milliseconds
+Time of cuFFT16: 6.288154 milliseconds
+Time of gemm: 0.239331 milliseconds
 ----------------------------------------------------------------------------------------------------
 
 GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
