@@ -296,8 +296,6 @@ int main(int argc, char **argv)
 
     printf("[Testing acceleration] - Starting...\n");
 
-    // Define error, event, result data structure
-
     // Define and zero initialize input and output
     half* X_re = new half[n * n * batch]();
     half* FX_re = new half[n * n * batch]();
@@ -315,7 +313,8 @@ int main(int argc, char **argv)
     cuFFT16Run.pop_back();
     gemmRun.pop_back();
 
-  
+    printf("Warm up completed, start experiments...\n");
+ 
     // Run experiment
     for (int i = 0; i < iter; i++){
         // Initialize input

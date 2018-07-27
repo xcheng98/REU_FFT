@@ -29,6 +29,17 @@ Time of cuFFT32: 0.205014 milliseconds
 Time of cuFFT16: 0.306808 milliseconds
 Time of gemm: 0.042428 milliseconds
 
+----------------------------------------------------------------------------------------------------
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 512, batch size = 16, norm = 1.000000, iteration = 100
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 1.555080 milliseconds
+Time of cuFFT16: 13.877550 milliseconds
+Time of gemm: 7.142925 milliseconds
+
+
 
 GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
 Problem size = 64, batch size = 16, norm = 1.000000, iteration = 1000
@@ -54,5 +65,29 @@ Time of cuFFT16: 2.988702 milliseconds
 Time of gemm: 1.200071 milliseconds
 
 
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 512, batch size = 16, norm = 1.000000, iteration = 100
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 1.553677 milliseconds
+Time of cuFFT16: 13.619476 milliseconds
+Time of gemm: 7.035990 milliseconds
 
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 1024, batch size = 16, norm = 1.000000, iteration = 10
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 6.233903 milliseconds
+Time of cuFFT16: 61.743492 milliseconds
+Time of gemm: 51.830284 milliseconds
+
+
+GPU Device 0: "GeForce GTX 1050 Ti" with compute capability 6.1
+Problem size = 2048, batch size = 16, norm = 1.000000, iteration = 10
+[Testing acceleration] - Starting...
+Warm up completed, start experiments...
+Time of cuFFT32: 33.927032 milliseconds
+Time of cuFFT16: 275.319458 milliseconds
+Time of gemm: 417.837402 milliseconds
 
