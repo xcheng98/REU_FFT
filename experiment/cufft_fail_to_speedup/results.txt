@@ -1,0 +1,30 @@
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 64, batch size = 16, norm = 1.000000, iteration = 1000
+[Testing acceleration] - Starting...
+Time of cuFFT32: 0.019715 milliseconds
+Time of cuFFT16: 0.020047 milliseconds
+Time of gemm: 0.025110 milliseconds
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 128, batch size = 16, norm = 1.000000, iteration = 1000
+[Testing acceleration] - Starting...
+Time of cuFFT32: 0.032229 milliseconds
+Time of cuFFT16: 0.030581 milliseconds
+Time of gemm: 0.030976 milliseconds
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 256, batch size = 16, norm = 1.000000, iteration = 1000
+[Testing acceleration] - Starting...
+Time of cuFFT32: 0.071138 milliseconds
+Time of cuFFT16: 0.046234 milliseconds
+Time of gemm: 0.030480 milliseconds
+
+
+GPU Device 0: "Tesla V100-PCIE-16GB" with compute capability 7.0
+Problem size = 512, batch size = 16, norm = 1.000000, iteration = 1000
+[Testing acceleration] - Starting...
+Time of cuFFT32: 0.205014 milliseconds
+Time of cuFFT16: 0.306808 milliseconds
+Time of gemm: 0.042428 milliseconds
