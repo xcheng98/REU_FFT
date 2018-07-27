@@ -42,8 +42,8 @@ __global__ void myAccumulate_transposed(int n, int M, float* X1, float* X2, floa
 
 
 // Static scaling factors
-float s1 = 1.0f;
-float s2 = 0.001f;
+#define s1 1.0f
+#define s2 0.001f
 
 cublasStatus_t status;
 cublasHandle_t handle;
@@ -414,7 +414,7 @@ __global__ void mySplit(int N, float* X, half* Xhi, half* Xlo, int B)
     if (idx < B){
         for (int i = 0; i < N; i++){
             Xhi[i + idx * N] = X[i + idx * N]/s1;
-            Xlo[i + idx * N] = (X[i + idx * N] - Xhi[i + idx * N] * s1) / s2;
+            Xlo[i + idx * N] = (X[i + idx * N] - (float)Xhi[i + idx * N] * s1) / s2;
         }
     }
 }
@@ -541,7 +541,7 @@ __global__ void mySplit_transposed(int n, int M, float* X, half* Xhi, half* Xlo,
 
         for (int i = 0; i < n; i++){
             Xhi[offset + i * stride] = X[offset + i * stride]/s1;
-            Xlo[offset + i * stride] = (X[offset + i * stride] - Xhi[offset + i * stride] * s1) / s2;
+            Xlo[offset + i * stride] = (X[offset + i * stride] - (float)Xhi[offset + i * stride] * s1) / s2;
         }
     }
 }

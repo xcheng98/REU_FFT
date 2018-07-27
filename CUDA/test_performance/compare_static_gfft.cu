@@ -10,7 +10,7 @@
 
 // gfft
 #include "../alternative/static_gfft.h"
-#include "../alternative/static_32_gfft.h"
+#include "../util/32_gfft.h"
 
 // CUFFT
 #include <cufft.h>
