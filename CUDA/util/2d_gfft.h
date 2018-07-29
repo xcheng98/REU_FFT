@@ -5,13 +5,14 @@
  * Calling 1D gfft
  */
 
-#ifndef FFT_IMPROVED_GFFT_H
-#define FFT_IMPROVED_GFFT_H
+#ifndef FFT_2D_GFFT_H
+#define FFT_2D_GFFT_H
 
 #include "improved_gfft_for_2D.h"
 
 cublasStatus_t status;
 cublasHandle_t handle;
+
 
 int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, int BATCH = 1)
 {
@@ -19,7 +20,7 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
 
     // Allocate memory for input and output matrix
     float *input_re, *input_im, *output_re, *output_im;
-    mem_size = M * N * BATCH * sizeof(float);
+    int mem_size = M * N * BATCH * sizeof(float);
     checkCudaErrors(cudaMalloc((void **) &input_re, mem_size));
     checkCudaErrors(cudaMalloc((void **) &input_im, mem_size));
     checkCudaErrors(cudaMalloc((void **) &output_re, mem_size));
@@ -65,6 +66,8 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
     for (int j = 0; j < BATCH; j++){
         status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N, M, &alpha, output_re + j * M * N, M, 
                             &beta, output_re + j * M * N, M, input_re + j * M * N, N);
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, N, M, &alpha, output_im + j * M * N, M, 
+                            &beta, output_im + j * M * N, M, input_im + j * M * N, N);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (first transpose).\n");
             return FFT_FAILURE;
@@ -73,7 +76,6 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
 
     // Wait for GPU to finish work
     cudaDeviceSynchronize();
-
 
     // Call gfft function for the second time (transpose(Y) = F * transpose(Z))
     // Use input_re & input_im as buffer
@@ -88,6 +90,8 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
     for (int j = 0; j < BATCH; j++){
         status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, &alpha, input_re + j * M * N, N, 
                             &beta, input_re + j * M * N, N, output_re + j * M * N, M);
+        status = cublasSgeam(handle, CUBLAS_OP_T, CUBLAS_OP_T, M, N, &alpha, input_im + j * M * N, N, 
+                            &beta, input_im + j * M * N, N, output_im + j * M * N, M);
         if (status != CUBLAS_STATUS_SUCCESS) {
             fprintf(stderr, "!!!! CUBLAS kernel execution error (second transpose).\n");
             return FFT_FAILURE;
@@ -95,8 +99,8 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
     }
 
     // Wait for GPU to finish work
-    cudaDeviceSynchronize();
-    
+    cudaDeviceSynchronize();    
+
     // Shutdown cublas
     status = cublasDestroy(handle);
     if (status != CUBLAS_STATUS_SUCCESS) {
@@ -127,3 +131,5 @@ int fft_2d(int M, int N, float* X_re, float* X_im, float* FX_re, float* FX_im, i
 
     return 0;
 }
+
+#endif /* FFT_2D_GFFT_H */

@@ -50,7 +50,7 @@ int cuFFT32(int M, int N, Csingle* X, Csingle* FX, int B = 1){
     cufftResult result;
     cufftHandle plan;
     size_t workSize;
-    long long int input_size_long[2] = {M, N};
+    long long int input_size_long[2] = {N, M};
     result = cufftCreate(&plan);
     if (result != CUFFT_SUCCESS)
     {
@@ -101,7 +101,7 @@ int cuFFT16(int M, int N, Chalf* X, Chalf* FX, int B = 1){
     cufftResult result;
     cufftHandle plan;
     size_t workSize;
-    long long int input_size_long[2] = {M, N};
+    long long int input_size_long[2] = {N, M};
     result = cufftCreate(&plan);
     if (result != CUFFT_SUCCESS)
     {
@@ -234,8 +234,8 @@ int main(int argc, char **argv)
 
     // Define error, event, result data structure
     cudaEvent_t start, stop;
-    std::vector<float> cuFFT32Run, cuFFT16Run, 2dfftRun;
-    std::vector<float> cuFFT16Error, 2dfftError;
+    std::vector<float> cuFFT32Run, cuFFT16Run, fft2dRun;
+    std::vector<float> cuFFT16Error, fft2dError;
     float duration, error1, error2;
 
     // Define and zero initialize input and output
@@ -283,7 +283,7 @@ int main(int argc, char **argv)
         // Call 2d gfft
         __START__
         fft_2d(m, n, X_re, X_im, FX_re, FX_im, batch);
-        __STOP__(2dfftRun)
+        __STOP__(fft2dRun)
 
         error1 = 0.0f;
         error2 = 0.0f;
@@ -294,15 +294,16 @@ int main(int argc, char **argv)
             error1 += (float)fabs((float)(FX_16[j].y) - FX_32[j].y);
             error2 += (float)fabs(FX_re[j] - FX_32[j].x);
             error2 += (float)fabs(FX_im[j] - FX_32[j].y);
+            if (display==1) printf("No. %d: (%f, %f), (%f, %f)\n", j, FX_32[j].x, FX_32[j].y, FX_re[j], FX_im[j]);
         }
         cuFFT16Error.push_back(error1 / (m * n * batch));
-        2dfftError.push_back(error2 / (m * n * batch));
+        fft2dError.push_back(error2 / (m * n * batch));
     }
 
     // Print experiment result
     printf("Time of cuFFT32: %f milliseconds\n", show_mean(cuFFT32Run)); 
     printf("Time of cuFFT16: %f milliseconds, error = %.10f\n", show_mean(cuFFT16Run), show_mean(cuFFT16Error)/norm); 
-    printf("Time of 2d gfft: %f milliseconds, error = %.10f\n", show_mean(2dfftRun), show_mean(2dfftError)/norm); 
+    printf("Time of 2d gfft: %f milliseconds, error = %.10f\n", show_mean(fft2dRun), show_mean(fft2dError)/norm); 
 
     // Free input and output memory
     delete [] X_re;
