@@ -81,6 +81,7 @@ FFT_S gfft_init(int SIZE, int BATCH){
         fprintf(stderr, "!!!!! Matrix initialization error (Fourier matrix).\n");
         exit(1);
     }
+    return FFT_SUCCESS;
 }
 
 FFT_S gfft_destroy(){
@@ -92,10 +93,11 @@ FFT_S gfft_destroy(){
     checkCudaErrors(cudaFree(X_split));
     checkCudaErrors(cudaFree(result1));
     checkCudaErrors(cudaFree(result2));
+    return FFT_SUCCESS;
 }
 
 
-int gfft(int SIZE, float* X_re, float* X_im, float* FX_re, float* FX_im, int BATCH)
+FFT_S gfft(int SIZE, float*& X_re, float*& X_im, float*& FX_re, float*& FX_im, int BATCH)
 {
     FFT_S fft_status;
 
@@ -109,7 +111,7 @@ int gfft(int SIZE, float* X_re, float* X_im, float* FX_re, float* FX_im, int BAT
     // Wait for GPU to finish work
     cudaDeviceSynchronize();
 
-    return 0;
+    return FFT_SUCCESS;
 }
 
 
